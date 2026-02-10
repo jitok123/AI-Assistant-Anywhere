@@ -213,14 +213,14 @@ export interface EmbeddingModelPreset {
 
 export const EMBEDDING_MODEL_PRESETS: EmbeddingModelPreset[] = [
   {
-    name: '通义 Embedding V3',
+    name: '通义 VL-Embedding',
     model: 'qwen3-vl-embedding',
     provider: 'dashscope',
-    description: '⭐ 阿里云最新视觉文字嵌入模型，推荐使用',
+    description: '阿里云视觉文字嵌入模型，支持图文混合',
     dimensions: 1024,
   },
   {
-    name: '通义 Embedding V3',
+    name: '通义 Text-Embedding V3',
     model: 'text-embedding-v3',
     provider: 'dashscope',
     description: '阿里云嵌入模型 V3',

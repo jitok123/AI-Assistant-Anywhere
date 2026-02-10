@@ -1,14 +1,15 @@
 /**
  * 本地 SQLite 数据库服务
  * 所有数据（对话、消息、RAG块、设置）均存储于本地
+ * 支持多层 RAG（感性/理性/历史/通用）
  */
 import * as SQLite from 'expo-sqlite';
 import type {
   Conversation,
   Message,
   RagChunk,
+  RagLayer,
   AppSettings,
-  DEFAULT_SETTINGS,
 } from '../types';
 
 const DB_NAME = 'ai_helper.db';
@@ -42,6 +43,9 @@ export async function initDatabase(): Promise<void> {
       content TEXT NOT NULL,
       type TEXT DEFAULT 'text',
       image_uri TEXT,
+      tool_calls TEXT,
+      search_results TEXT,
+      generated_image_url TEXT,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
@@ -52,6 +56,7 @@ export async function initDatabase(): Promise<void> {
       source_id TEXT,
       content TEXT NOT NULL,
       embedding TEXT,
+      layer TEXT DEFAULT 'general',
       created_at INTEGER NOT NULL
     );
 
@@ -62,7 +67,32 @@ export async function initDatabase(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_rag_source ON rag_chunks(source);
+    CREATE INDEX IF NOT EXISTS idx_rag_layer ON rag_chunks(layer);
   `);
+
+  // 迁移：为旧数据添加 layer 字段
+  try {
+    await database.runAsync(
+      "UPDATE rag_chunks SET layer = 'general' WHERE layer IS NULL"
+    );
+  } catch {}
+
+  // 迁移：为旧 messages 表添加新字段
+  try {
+    await database.execAsync(`
+      ALTER TABLE messages ADD COLUMN tool_calls TEXT;
+    `);
+  } catch {}
+  try {
+    await database.execAsync(`
+      ALTER TABLE messages ADD COLUMN search_results TEXT;
+    `);
+  } catch {}
+  try {
+    await database.execAsync(`
+      ALTER TABLE messages ADD COLUMN generated_image_url TEXT;
+    `);
+  } catch {}
 }
 
 // ==================== 对话管理 ====================
@@ -129,7 +159,7 @@ export async function deleteConversation(id: string): Promise<void> {
 export async function addMessage(message: Message): Promise<void> {
   const database = getDatabase();
   await database.runAsync(
-    'INSERT INTO messages (id, conversation_id, role, content, type, image_uri, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO messages (id, conversation_id, role, content, type, image_uri, tool_calls, search_results, generated_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       message.id,
       message.conversationId,
@@ -137,6 +167,9 @@ export async function addMessage(message: Message): Promise<void> {
       message.content,
       message.type,
       message.imageUri || null,
+      message.toolCalls ? JSON.stringify(message.toolCalls) : null,
+      message.searchResults ? JSON.stringify(message.searchResults) : null,
+      message.generatedImageUrl || null,
       message.createdAt,
     ]
   );
@@ -171,6 +204,9 @@ export async function getMessages(
     content: row.content,
     type: row.type || 'text',
     imageUri: row.image_uri,
+    toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+    searchResults: row.search_results ? JSON.parse(row.search_results) : undefined,
+    generatedImageUrl: row.generated_image_url || undefined,
     createdAt: row.created_at,
   }));
 }
@@ -193,6 +229,9 @@ export async function getRecentMessages(
       content: row.content,
       type: row.type || 'text',
       imageUri: row.image_uri,
+      toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+      searchResults: row.search_results ? JSON.parse(row.search_results) : undefined,
+      generatedImageUrl: row.generated_image_url || undefined,
       createdAt: row.created_at,
     }))
     .reverse();
@@ -205,8 +244,8 @@ export async function addRagChunk(chunk: RagChunk): Promise<void> {
   const database = getDatabase();
   const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
   await database.runAsync(
-    'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.createdAt]
+    'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.layer || 'general', chunk.createdAt]
   );
 }
 
@@ -216,24 +255,31 @@ export async function addRagChunks(chunks: RagChunk[]): Promise<void> {
   for (const chunk of chunks) {
     const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
     await database.runAsync(
-      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.createdAt]
+      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.layer || 'general', chunk.createdAt]
     );
   }
 }
 
 /** 获取所有有 embedding 的 RAG 块 */
-export async function getAllRagChunksWithEmbeddings(): Promise<
-  Array<{ id: string; content: string; embedding: number[] }>
+export async function getAllRagChunksWithEmbeddings(
+  layer?: RagLayer
+): Promise<
+  Array<{ id: string; content: string; embedding: number[]; layer: RagLayer }>
 > {
   const database = getDatabase();
-  const rows = await database.getAllAsync(
-    'SELECT id, content, embedding FROM rag_chunks WHERE embedding IS NOT NULL'
-  );
+  let query = 'SELECT id, content, embedding, layer FROM rag_chunks WHERE embedding IS NOT NULL';
+  const params: any[] = [];
+  if (layer) {
+    query += ' AND layer = ?';
+    params.push(layer);
+  }
+  const rows = await database.getAllAsync(query, params);
   return (rows as any[]).map((row) => ({
     id: row.id,
     content: row.content,
     embedding: JSON.parse(row.embedding),
+    layer: row.layer || 'general',
   }));
 }
 
@@ -249,8 +295,57 @@ export async function getChunksWithoutEmbeddings(): Promise<RagChunk[]> {
     sourceId: row.source_id,
     content: row.content,
     embedding: null,
+    layer: row.layer || 'general',
     createdAt: row.created_at,
   }));
+}
+
+/** 按层级获取 RAG 块 */
+export async function getRagChunksByLayer(layer: RagLayer): Promise<RagChunk[]> {
+  const database = getDatabase();
+  const rows = await database.getAllAsync(
+    'SELECT * FROM rag_chunks WHERE layer = ? ORDER BY created_at DESC',
+    [layer]
+  );
+  return (rows as any[]).map((row) => ({
+    id: row.id,
+    source: row.source,
+    sourceId: row.source_id,
+    content: row.content,
+    embedding: row.embedding ? JSON.parse(row.embedding) : null,
+    layer: row.layer,
+    createdAt: row.created_at,
+  }));
+}
+
+/** 清除指定层级的旧数据（用于感性层滚动更新） */
+export async function clearOldRagChunks(
+  layer: RagLayer,
+  keepCount: number
+): Promise<void> {
+  const database = getDatabase();
+  await database.runAsync(
+    `DELETE FROM rag_chunks WHERE layer = ? AND id NOT IN (
+      SELECT id FROM rag_chunks WHERE layer = ? ORDER BY created_at DESC LIMIT ?
+    )`,
+    [layer, layer, keepCount]
+  );
+}
+
+/** 替换指定层级的所有数据（用于理性层整体更新） */
+export async function replaceRagLayer(
+  layer: RagLayer,
+  chunks: RagChunk[]
+): Promise<void> {
+  const database = getDatabase();
+  await database.runAsync('DELETE FROM rag_chunks WHERE layer = ?', [layer]);
+  for (const chunk of chunks) {
+    const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
+    await database.runAsync(
+      'INSERT INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, layer, chunk.createdAt]
+    );
+  }
 }
 
 /** 更新 RAG 块的 embedding */
@@ -353,6 +448,9 @@ export async function exportAllData(): Promise<{
     content: row.content,
     type: row.type || 'text',
     imageUri: row.image_uri,
+    toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+    searchResults: row.search_results ? JSON.parse(row.search_results) : undefined,
+    generatedImageUrl: row.generated_image_url || undefined,
     createdAt: row.created_at,
   }));
 
@@ -365,6 +463,7 @@ export async function exportAllData(): Promise<{
     sourceId: row.source_id,
     content: row.content,
     embedding: row.embedding ? JSON.parse(row.embedding) : null,
+    layer: row.layer || 'general',
     createdAt: row.created_at,
   }));
 
@@ -388,16 +487,23 @@ export async function importAllData(data: {
 
   for (const msg of data.messages) {
     await database.runAsync(
-      'INSERT OR REPLACE INTO messages (id, conversation_id, role, content, type, image_uri, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [msg.id, msg.conversationId, msg.role, msg.content, msg.type, msg.imageUri || null, msg.createdAt]
+      'INSERT OR REPLACE INTO messages (id, conversation_id, role, content, type, image_uri, tool_calls, search_results, generated_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        msg.id, msg.conversationId, msg.role, msg.content, msg.type,
+        msg.imageUri || null,
+        msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+        msg.searchResults ? JSON.stringify(msg.searchResults) : null,
+        msg.generatedImageUrl || null,
+        msg.createdAt,
+      ]
     );
   }
 
   for (const chunk of data.ragChunks) {
     const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
     await database.runAsync(
-      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.createdAt]
+      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.layer || 'general', chunk.createdAt]
     );
   }
 }

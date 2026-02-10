@@ -1,10 +1,17 @@
 node_modules/
 .expo/
+.expo-shared/
 dist/
 web-build/
 android/
 ios/
 .git/
+android/.gradle/
+android/.cxx/
+android/app/build/
+android/build/
+android/sdk/
+android/local.properties
 *.jks
 *.p8
 *.p12

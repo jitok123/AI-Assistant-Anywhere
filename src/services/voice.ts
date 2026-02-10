@@ -87,41 +87,113 @@ export async function isSpeaking(): Promise<boolean> {
 
 /**
  * 阿里云语音识别 (ASR)
- * 将录音文件发送到 DashScope 进行识别
+ * 
+ * 策略：
+ *   1. 首选：将本地录音文件通过 FormData 上传给 Paraformer 实时识别
+ *   2. 降级：使用 SenseVoice 短音频识别
+ * 
+ * 注意：DashScope 的 file_urls 参数需要公网可达的 URL，
+ * 本地 file:/// URI 无法被服务器下载，因此统一使用 FormData 上传方式。
  */
 export async function recognizeSpeech(
   audioUri: string,
   apiKey: string
 ): Promise<string> {
-  // 使用阿里云 Paraformer 语音识别
+  try {
+    return await recognizeSpeechDirect(audioUri, apiKey);
+  } catch (error: any) {
+    console.warn('直接识别失败，尝试降级方案:', error.message);
+    try {
+      return await recognizeSpeechSenseVoice(audioUri, apiKey);
+    } catch {
+      throw new Error('语音识别失败，请检查网络或手动输入');
+    }
+  }
+}
+
+/**
+ * 方案1：Paraformer 实时识别（FormData 上传本地文件）
+ */
+async function recognizeSpeechDirect(
+  audioUri: string,
+  apiKey: string
+): Promise<string> {
   const formData = new FormData();
   formData.append('file', {
     uri: audioUri,
     type: 'audio/m4a',
     name: 'recording.m4a',
   } as any);
+  formData.append('model', 'paraformer-v2');
 
-  try {
-    const response = await fetch(
-      'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      }
-    );
+  const response = await fetchWithTimeout(
+    'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/realtime-recognition',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    },
+    30000,
+  );
 
-    if (!response.ok) {
-      throw new Error(`语音识别失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data?.output?.text || '';
-  } catch (error) {
-    console.error('语音识别错误:', error);
-    // 降级：提示用户手动输入
-    throw new Error('语音识别失败，请检查网络或手动输入');
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ASR 请求失败 (${response.status}): ${errorText}`);
   }
+
+  const data = await response.json();
+  return data?.output?.sentence?.text || data?.output?.text || '';
+}
+
+/**
+ * 方案2：SenseVoice 短音频识别（降级方案）
+ */
+async function recognizeSpeechSenseVoice(
+  audioUri: string,
+  apiKey: string
+): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: audioUri,
+    type: 'audio/m4a',
+    name: 'recording.m4a',
+  } as any);
+  formData.append('model', 'sensevoice-v1');
+
+  const response = await fetchWithTimeout(
+    'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    },
+    30000,
+  );
+
+  if (!response.ok) {
+    throw new Error(`语音识别失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data?.output?.text || '';
+}
+
+/**
+ * 带超时的 fetch 封装
+ */
+function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('语音识别超时')), timeoutMs);
+    fetch(url, options)
+      .then((res) => { clearTimeout(timer); resolve(res); })
+      .catch((err) => { clearTimeout(timer); reject(err); });
+  });
 }

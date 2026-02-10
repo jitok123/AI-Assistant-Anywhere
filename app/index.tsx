@@ -43,14 +43,12 @@ export default function ChatScreen() {
 
   const currentConv = conversations.find((c) => c.id === currentConversationId);
 
-  // 滚动到底部
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, []);
 
-  // 播放/停止语音
   const toggleSpeak = (message: Message) => {
     if (speakingId === message.id) {
       stopSpeaking();
@@ -80,8 +78,13 @@ export default function ChatScreen() {
         <TouchableOpacity
           onPress={() => setDrawerVisible(true)}
           style={styles.headerBtn}
+          activeOpacity={0.6}
         >
-          <Text style={{ color: colors.text, fontSize: 22 }}>☰</Text>
+          <View style={styles.menuIcon}>
+            <View style={[styles.menuLine, { backgroundColor: colors.text }]} />
+            <View style={[styles.menuLine, { backgroundColor: colors.text, width: 16 }]} />
+            <View style={[styles.menuLine, { backgroundColor: colors.text }]} />
+          </View>
         </TouchableOpacity>
 
         <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
@@ -92,10 +95,17 @@ export default function ChatScreen() {
           {/* 聊天模式切换 */}
           <TouchableOpacity
             onPress={() => setChatMode(chatMode === 'text' ? 'voice' : 'text')}
-            style={styles.headerBtn}
+            style={[
+              styles.modeBtn,
+              { backgroundColor: chatMode === 'voice' ? colors.primary + '20' : 'transparent' },
+            ]}
+            activeOpacity={0.6}
           >
-            <Text style={{ color: chatMode === 'voice' ? colors.primary : colors.textSecondary, fontSize: 18 }}>
-              {chatMode === 'voice' ? '🎙️' : '💬'}
+            <Text style={[
+              styles.modeBtnText,
+              { color: chatMode === 'voice' ? colors.primary : colors.textSecondary },
+            ]}>
+              {chatMode === 'voice' ? '语音' : '文字'}
             </Text>
           </TouchableOpacity>
 
@@ -103,8 +113,22 @@ export default function ChatScreen() {
           <TouchableOpacity
             onPress={() => newConversation()}
             style={styles.headerBtn}
+            activeOpacity={0.6}
           >
-            <Text style={{ color: colors.primary, fontSize: 20 }}>✎</Text>
+            <View style={[styles.newChatIcon, { borderColor: colors.primary }]}>
+              <Text style={[styles.newChatPlus, { color: colors.primary }]}>+</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 通话按钮 */}
+          <TouchableOpacity
+            onPress={() => router.push('/call')}
+            style={styles.headerBtn}
+            activeOpacity={0.6}
+          >
+            <View style={[styles.callIconSmall, { backgroundColor: colors.success }]}>
+              <Text style={styles.callIconText}>T</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -112,23 +136,23 @@ export default function ChatScreen() {
       {/* 消息列表 */}
       {messages.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyIcon]}>🤖</Text>
+          <View style={[styles.emptyLogo, { backgroundColor: colors.primaryLight }]}>
+            <Text style={[styles.emptyLogoText, { color: colors.primary }]}>AI</Text>
+          </View>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
             随身AI助手
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            一个真正懂你的AI助手
-          </Text>
-          <Text style={[styles.emptyHint, { color: colors.textTertiary }]}>
-            所有对话都会被记忆 · 支持知识库 · 本地存储
+            多层记忆 · 联网搜索 · 图片生成 · 语音通话
           </Text>
 
           {!settings.deepseekApiKey && (
             <TouchableOpacity
               onPress={() => router.push('/settings')}
               style={[styles.setupBtn, { backgroundColor: colors.primary }]}
+              activeOpacity={0.7}
             >
-              <Text style={styles.setupBtnText}>⚙️ 先去配置 API Key</Text>
+              <Text style={styles.setupBtnText}>配置 API Key 开始使用</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -199,8 +223,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
     borderBottomWidth: 0.5,
   },
   headerBtn: {
@@ -214,6 +238,55 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // 菜单图标 (三条横线)
+  menuIcon: {
+    width: 20,
+    height: 16,
+    justifyContent: 'space-between',
+  },
+  menuLine: {
+    width: 20,
+    height: 2,
+    borderRadius: 1,
+  },
+  // 模式切换按钮
+  modeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  modeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // 新建对话图标
+  newChatIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newChatPlus: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: -1,
+  },
+  // 通话小图标
+  callIconSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  callIconText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
   messageList: {
     paddingVertical: 12,
@@ -224,9 +297,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
+  emptyLogo: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyLogoText: {
+    fontSize: 28,
+    fontWeight: '800',
   },
   emptyTitle: {
     fontSize: 24,
@@ -234,19 +315,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  emptyHint: {
-    fontSize: 13,
+    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   setupBtn: {
     marginTop: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   setupBtnText: {
     color: '#FFF',

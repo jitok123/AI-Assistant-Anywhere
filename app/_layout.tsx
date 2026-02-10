@@ -40,6 +40,14 @@ export default function RootLayout() {
             presentation: 'modal',
           }}
         />
+        <Stack.Screen
+          name="call"
+          options={{
+            headerShown: false,
+            presentation: 'fullScreenModal',
+            animation: 'fade',
+          }}
+        />
       </Stack>
     </>
   );

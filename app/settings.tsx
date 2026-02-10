@@ -158,7 +158,7 @@ export default function SettingsScreen() {
         ]}
       >
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>← 返回</Text>
+          <Text style={{ color: colors.primary, fontSize: 16 }} numberOfLines={1}>← 返回</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>设置</Text>
         <View style={{ width: 60 }} />
@@ -362,6 +362,46 @@ export default function SettingsScreen() {
             <Switch
               value={settings.autoSaveToRag}
               onValueChange={(v) => updateSettings({ autoSaveToRag: v })}
+              trackColor={{ true: colors.primary }}
+            />
+          </Row>
+        </Section>
+
+        {/* ==================== 🧠 AI Agent 设置 ==================== */}
+        <Section title="AI Agent (智能体)" icon="🧠">
+          <Row label="启用 Agent 模式" hint="AI 自动判断是否联网搜索/生成图片">
+            <Switch
+              value={settings.agentEnabled}
+              onValueChange={(v) => updateSettings({ agentEnabled: v })}
+              trackColor={{ true: colors.primary }}
+            />
+          </Row>
+          <Row label="启用联网搜索" hint="允许 AI 搜索互联网信息">
+            <Switch
+              value={settings.webSearchEnabled}
+              onValueChange={(v) => updateSettings({ webSearchEnabled: v })}
+              trackColor={{ true: colors.primary }}
+            />
+          </Row>
+          {settings.webSearchEnabled && (
+            <Row label="百度千帆 API Key" hint="联网搜索密钥">
+              <TextInput
+                style={[
+                  styles.input,
+                  { color: colors.text, borderColor: colors.border },
+                ]}
+                value={settings.baiduQianfanApiKey}
+                onChangeText={(v) => updateSettings({ baiduQianfanApiKey: v })}
+                placeholder="bce-v3/ALTAK-..."
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="none"
+              />
+            </Row>
+          )}
+          <Row label="启用图片生成" hint="允许 AI 生成图片" isLast>
+            <Switch
+              value={settings.imageGenEnabled}
+              onValueChange={(v) => updateSettings({ imageGenEnabled: v })}
               trackColor={{ true: colors.primary }}
             />
           </Row>
@@ -673,7 +713,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 0.5,
   },
-  backBtn: { padding: 8, width: 60 },
+  backBtn: { padding: 8, minWidth: 60 },
   headerTitle: {
     flex: 1,
     fontSize: 17,

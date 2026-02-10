@@ -84,6 +84,10 @@ export async function importDataFile(): Promise<ExportData | null> {
     if (!data.version || !data.conversations || !data.messages) {
       throw new Error('无效的备份文件格式');
     }
+    // 兼容不含 ragChunks 的旧备份
+    if (!data.ragChunks) {
+      data.ragChunks = [];
+    }
 
     return data;
   } catch (error) {

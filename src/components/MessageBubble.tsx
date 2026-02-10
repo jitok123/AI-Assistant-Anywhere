@@ -71,13 +71,45 @@ export function MessageBubble({ message }: Props) {
       </View>
 
       <View style={[styles.contentWrap, isUser && styles.userContentWrap]}>
-        {/* 图片消息 */}
-        {message.imageUri && (
+        {/* 图片消息 (用户上传/AI生成) */}
+        {(message.imageUri || message.generatedImageUrl) && (
           <Image
-            source={{ uri: message.imageUri }}
+            source={{ uri: message.imageUri || message.generatedImageUrl }}
             style={styles.image}
             resizeMode="cover"
           />
+        )}
+
+        {/* 思考过程/工具调用展示 */}
+        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
+          <View style={styles.toolsContainer}>
+            {message.toolCalls.map((call, idx) => (
+              <View
+                key={idx}
+                style={[styles.toolCall, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <Text style={[styles.toolTitle, { color: colors.textSecondary }]}>
+                  {call.tool === 'web_search' ? '🔍 联网搜索' : 
+                   call.tool === 'image_gen' ? '🎨 图片生成' : '⚙️ 工具调用'}
+                </Text>
+                <Text style={[styles.toolInput, { color: colors.textTertiary }]} numberOfLines={1}>
+                  "{call.input}"
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* 搜索结果来源引用 */}
+        {!isUser && message.searchResults && message.searchResults.length > 0 && (
+          <View style={styles.sourcesContainer}>
+            <Text style={[styles.sourceLabel, { color: colors.textSecondary }]}>参考来源:</Text>
+            {message.searchResults.map((res, idx) => (
+              <Text key={idx} style={[styles.sourceLink, { color: colors.primary }]} numberOfLines={1}>
+                [{idx + 1}] {res.title}
+              </Text>
+            ))}
+          </View>
         )}
 
         {/* 文本内容 */}
@@ -101,8 +133,8 @@ export function MessageBubble({ message }: Props) {
 
         {/* 时间和类型标记 */}
         <Text style={[styles.meta, { color: colors.textTertiary }, isUser && styles.userMeta]}>
-          {message.type === 'voice' ? '🎤 ' : ''}
-          {message.type === 'image' ? '🖼️ ' : ''}
+          {message.type === 'voice' ? '[语音] ' : ''}
+          {message.type === 'image' ? '[图片] ' : ''}
           {new Date(message.createdAt).toLocaleTimeString('zh-CN', {
             hour: '2-digit',
             minute: '2-digit',
@@ -172,5 +204,43 @@ const styles = StyleSheet.create({
   userMeta: {
     marginLeft: 0,
     marginRight: 4,
+  },
+  // 工具调用样式
+  toolsContainer: {
+    marginBottom: 8,
+  },
+  toolCall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    marginBottom: 4,
+  },
+  toolTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginRight: 6,
+  },
+  toolInput: {
+    fontSize: 11,
+    flex: 1,
+  },
+  // 来源引用样式
+  sourcesContainer: {
+    marginBottom: 8,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    borderRadius: 8,
+  },
+  sourceLabel: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  sourceLink: {
+    fontSize: 11,
+    marginBottom: 2,
+    textDecorationLine: 'underline',
   },
 });

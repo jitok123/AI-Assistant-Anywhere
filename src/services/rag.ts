@@ -1,6 +1,7 @@
 /**
  * RAG (检索增强生成) 服务
  * 核心：将新数据增量嵌入到向量库，查询时检索最相关的文本块
+ * 支持多层 RAG（general 层为传统 RAG）
  */
 import * as Crypto from 'expo-crypto';
 import { getEmbedding, getBatchEmbeddings } from './embedding';
@@ -50,6 +51,7 @@ export async function addChatToRag(
       sourceId: messages[0].conversationId,
       content,
       embedding: null,
+      layer: 'general',
       createdAt: Date.now(),
     });
   }
@@ -96,6 +98,7 @@ export async function addMarkdownToRag(
       sourceId: fileName,
       content: text,
       embedding: null,
+      layer: 'general',
       createdAt: Date.now(),
     });
   }
@@ -149,6 +152,7 @@ export async function searchRag(
       content: r.content,
       score: r.score,
       source: 'rag',
+      layer: 'general' as const,
     }));
   } catch (error) {
     console.error('RAG 搜索失败:', error);

@@ -110,7 +110,7 @@ export function ChatInput() {
   const pickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.8,
         allowsEditing: true,
       });
@@ -138,8 +138,11 @@ export function ChatInput() {
           onPress={pickImage}
           style={[styles.iconBtn]}
           disabled={isLoading}
+          activeOpacity={0.6}
         >
-          <Text style={[styles.iconText, { color: colors.textSecondary }]}>📷</Text>
+          <View style={[styles.iconCircle, { borderColor: colors.border }]}>
+            <Text style={[styles.iconSymbol, { color: colors.textSecondary }]}>+</Text>
+          </View>
         </TouchableOpacity>
 
         {/* 输入框 */}
@@ -164,11 +167,20 @@ export function ChatInput() {
           onPress={toggleRecording}
           style={[styles.iconBtn]}
           disabled={isLoading}
+          activeOpacity={0.6}
         >
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <Text style={[styles.iconText, { color: isRecording ? colors.error : colors.textSecondary }]}>
-              {isRecording ? '⏹️' : '🎤'}
-            </Text>
+          <Animated.View style={[
+            styles.micBtn,
+            {
+              backgroundColor: isRecording ? colors.error + '20' : 'transparent',
+              borderColor: isRecording ? colors.error : colors.border,
+              transform: [{ scale: pulseAnim }],
+            },
+          ]}>
+            <View style={[
+              styles.micDot,
+              { backgroundColor: isRecording ? colors.error : colors.textSecondary },
+            ]} />
           </Animated.View>
         </TouchableOpacity>
 
@@ -177,8 +189,9 @@ export function ChatInput() {
           <TouchableOpacity
             onPress={stopGeneration}
             style={[styles.sendBtn, { backgroundColor: colors.error }]}
+            activeOpacity={0.6}
           >
-            <Text style={styles.sendBtnText}>■</Text>
+            <View style={styles.stopSquare} />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -190,6 +203,7 @@ export function ChatInput() {
               },
             ]}
             disabled={!text.trim()}
+            activeOpacity={0.6}
           >
             <Text style={styles.sendBtnText}>↑</Text>
           </TouchableOpacity>
@@ -213,8 +227,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconText: {
-    fontSize: 22,
+  // 图片按钮：圆形 +
+  iconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconSymbol: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: -1,
   },
   inputWrap: {
     flex: 1,
@@ -230,6 +255,20 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     lineHeight: 20,
   },
+  // 录音按钮
+  micBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  micDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
   sendBtn: {
     width: 36,
     height: 36,
@@ -241,5 +280,11 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 18,
     fontWeight: '700',
+  },
+  stopSquare: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: '#FFF',
   },
 });

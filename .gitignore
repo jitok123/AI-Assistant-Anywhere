@@ -1,5 +1,6 @@
 node_modules/
 .expo/
+.expo-shared/
 dist/
 npm-debug.*
 *.jks
@@ -11,5 +12,12 @@ npm-debug.*
 web-build/
 android/
 ios/
+android/.gradle/
+android/.cxx/
+android/app/build/
+android/build/
+android/sdk/
+android/local.properties
 .env
 *.local
+Gptslog

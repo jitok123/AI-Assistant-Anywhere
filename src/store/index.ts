@@ -1,5 +1,12 @@
 /**
  * 全局状态管理 (Zustand)
+ * 
+ * 消息处理流程：
+ *   用户输入 → 多模态处理 → RAG专员检索 → AI Agent → 输出
+ *                                              ├─ 联网搜索
+ *                                              ├─ 图片生成
+ *                                              └─ 直接回复
+ *   输出后 → 更新多层RAG（感性/理性/历史）
  */
 import { create } from 'zustand';
 import * as Crypto from 'expo-crypto';
@@ -28,7 +35,14 @@ import {
   getRagStats,
 } from '../services/database';
 import { chatCompletion, generateTitle } from '../services/deepseek';
+import { agentProcess } from '../services/agent';
+import {
+  multiLayerSearch,
+  buildRagContext,
+  postConversationUpdate,
+} from '../services/ragSpecialist';
 import { searchRag, addChatToRag } from '../services/rag';
+import { imageToBase64 } from '../utils/fileUtils';
 import type { ExportData } from '../types';
 
 interface AppState {
@@ -182,7 +196,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { settings } = state;
 
     if (!settings.deepseekApiKey) {
-      throw new Error('请先在设置中配置 DeepSeek API Key');
+      throw new Error('请先在设置中配置 API Key');
     }
 
     // 确保有对话
@@ -223,36 +237,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ _abortController: abortController } as any);
 
     try {
-      // RAG 检索相关上下文
+      // ── 步骤1：RAG 专员检索（多层记忆） ──
       let ragContext = '';
       if (settings.dashscopeApiKey) {
-        const ragResults = await searchRag(
+        const ragResults = await multiLayerSearch(
           content,
-          settings.dashscopeApiKey,
-          settings.embeddingModel,
+          settings,
           settings.ragTopK
         );
         if (ragResults.length > 0) {
-          ragContext = ragResults
-            .map((r, i) => `[参考${i + 1}] ${r.content}`)
-            .join('\n\n');
+          ragContext = buildRagContext(ragResults);
         }
       }
 
-      // 获取最近消息作为上下文
+      // ── 步骤2：构建消息上下文 ──
       const recentMessages = await getRecentMessages(convId, 10);
 
-      // 构建 API 消息
       const apiMessages: ApiMessage[] = [];
 
-      // 系统提示
+      // 系统提示（含多层 RAG 上下文）
       let systemPrompt = settings.systemPrompt;
       if (ragContext) {
-        systemPrompt += `\n\n以下是从知识库中检索到的相关内容：\n${ragContext}`;
+        systemPrompt += `\n\n以下是从多层记忆系统中检索到的相关内容：\n${ragContext}`;
       }
       apiMessages.push({ role: 'system', content: systemPrompt });
 
-      // 历史消息（排除最后两条，即当前轮）
+      // 历史消息（排除当前轮）
       for (const msg of recentMessages.slice(0, -1)) {
         if (msg.role === 'user' || msg.role === 'assistant') {
           apiMessages.push({ role: msg.role, content: msg.content });
@@ -261,8 +271,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // 当前用户消息
       if (imageUri) {
-        // 多模态输入
-        const { imageToBase64 } = require('../utils/fileUtils');
         const base64 = await imageToBase64(imageUri);
         apiMessages.push({
           role: 'user',
@@ -275,40 +283,37 @@ export const useAppStore = create<AppState>((set, get) => ({
         apiMessages.push({ role: 'user', content });
       }
 
-      // 🤖 流式请求 AI 模型（模型配置来自设置页，预设见 config/models.ts）
-      const fullContent = await chatCompletion(
+      // ── 步骤3：AI Agent 处理（含工具调用决策） ──
+      const agentResult = await agentProcess(
         apiMessages,
-        settings.deepseekApiKey,
-        settings.deepseekBaseUrl,
-        settings.deepseekModel,
+        settings,
         (chunk: string, done: boolean) => {
           set({ streamingContent: chunk });
-          // 更新消息列表中 AI 消息的内容
           set((s) => ({
             messages: s.messages.map((m) =>
               m.id === aiMsg.id ? { ...m, content: chunk } : m
             ),
           }));
         },
-        settings.temperature,
-        settings.maxTokens
       );
 
-      // 保存 AI 回复
-      aiMsg.content = fullContent;
+      // ── 步骤4：保存结果 ──
+      aiMsg.content = agentResult.content;
+      aiMsg.toolCalls = agentResult.toolCalls.length > 0 ? agentResult.toolCalls : undefined;
+      aiMsg.searchResults = agentResult.searchResults;
+      aiMsg.generatedImageUrl = agentResult.generatedImageUrl;
       aiMsg.createdAt = Date.now();
       await addMessage(aiMsg);
 
-      // 更新消息列表
       set((s) => ({
         messages: s.messages.map((m) =>
-          m.id === aiMsg.id ? { ...m, content: fullContent } : m
+          m.id === aiMsg.id ? { ...m, ...aiMsg } : m
         ),
         isLoading: false,
         streamingContent: '',
       }));
 
-      // 如果是第一条消息，自动生成标题
+      // 自动生成标题
       const currentMessages = get().messages;
       if (currentMessages.filter((m) => m.role === 'user').length === 1) {
         generateTitle(
@@ -321,20 +326,42 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
 
-      // 自动保存到 RAG
+      // ── 步骤5：后处理 - 更新多层 RAG ──
       if (settings.autoSaveToRag && settings.dashscopeApiKey) {
+        // 传统 RAG 保存（通用层）
         addChatToRag(
           [userMsg, aiMsg],
           settings.dashscopeApiKey,
           settings.embeddingModel
         ).catch((err) => console.error('RAG 保存失败:', err));
+
+        // 多层 RAG 后处理（感性/理性/历史层更新）
+        const allMessages = await getMessages(convId);
+        postConversationUpdate(allMessages.slice(-6), settings)
+          .catch((err) => console.error('多层RAG更新失败:', err));
       }
 
       await get().refreshRagStats();
     } catch (error: any) {
       if (error.name === 'AbortError') return;
 
-      const errorContent = `抱歉，发生了错误：${error.message || '未知错误'}`;
+      // 更友好的错误信息
+      let errorContent = '抱歉，发生了错误。';
+      const msg = error.message || '';
+      if (msg.includes('网络') || msg.includes('Network') || msg.includes('Failed to fetch')) {
+        errorContent = '网络连接失败，请检查网络后重试。';
+      } else if (msg.includes('超时') || msg.includes('timeout')) {
+        errorContent = '请求超时，请检查网络或稍后重试。';
+      } else if (msg.includes('401') || msg.includes('Unauthorized')) {
+        errorContent = 'API Key 无效，请在设置中检查。';
+      } else if (msg.includes('429') || msg.includes('rate')) {
+        errorContent = '请求过于频繁，请稍后重试。';
+      } else if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
+        errorContent = 'AI 服务暂时不可用，请稍后重试。';
+      } else if (msg) {
+        errorContent = `出错了：${msg.slice(0, 200)}`;
+      }
+
       set((s) => ({
         messages: s.messages.map((m) =>
           m.id === aiMsg.id ? { ...m, content: errorContent } : m

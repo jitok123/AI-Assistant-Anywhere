@@ -1,148 +1,226 @@
-# 📱 随身AI助手
+# 随身AI助手 (Telephone AI Anywhere)
 
-> 一个真正懂你的 AI 助手 —— 一切皆历史，本地化存储，跨会话记忆
+> 一个全功能 AI 助手应用 — 多层记忆 · 联网搜索 · AI绘图 · 语音通话
 
-## ✨ 核心特性
+---
 
-| 特性 | 说明 |
+## 功能概览
+
+| 功能 | 说明 |
 |------|------|
-| 🧠 一切皆历史 | 所有聊天对话自动存入 RAG 知识库，跨会话记忆不遗忘 |
-| 🔒 本地化存储 | 所有数据存储于手机本地 SQLite，隐私有保障 |
-| 🎤 多模态输入 | 支持文字、语音、图片多种输入方式 |
-| 💬 双模式聊天 | 文本对话 + 语音对话两种模式自由切换 |
-| 📚 知识库管理 | 上传 Markdown 文件构建个人知识库 |
-| 💰 节省成本 | 已 Embedding 的数据增量追加，无需重复计算 |
-| 📤 数据自由 | 支持导出/导入全部聊天和 RAG 数据 |
-| 🌓 主题切换 | 深色/浅色/跟随系统 三种主题 |
+| AI 对话 | 流式响应，支持 DeepSeek / 通义千问 / Kimi / GLM / GPT 等所有兼容 OpenAI 格式的模型 |
+| 语音通话 | 类似豆包电话功能，按住说话，AI 自动语音回复，全屏通话界面 |
+| 多层 RAG 记忆 | 感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库 |
+| 联网搜索 | Agent 自主判断是否需要搜索，百度千帆 API 联网获取实时信息 |
+| AI 绘图 | Agent 自主判断是否需要画图，阿里云 DashScope 文生图 |
+| 语音输入 | 阿里云 Paraformer ASR 语音识别 |
+| 图片理解 | 支持多模态模型（通义千问 VL / GPT-4o），发送图片给 AI 分析 |
+| 知识库管理 | 上传 Markdown 文件构建本地知识库，支持向量检索 |
+| 数据导入导出 | 完整的对话、知识库备份与恢复 |
+| 暗色主题 | 自动跟随系统或手动切换 |
 
-## 🏗️ 技术架构
+---
 
-```
-React Native (Expo) + TypeScript
-├── 对话引擎: DeepSeek API (流式输出)
-├── 向量嵌入: 阿里云 DashScope text-embedding-v3
-├── 语音识别: 阿里云 DashScope ASR
-├── 本地存储: expo-sqlite (SQLite)
-├── RAG 引擎: 本地余弦相似度搜索
-├── 状态管理: Zustand
-└── 路由导航: Expo Router
-```
-
-## 📁 项目结构
+## 项目架构
 
 ```
 telephone_ai_anywhere/
-├── app/                        # Expo Router 页面
-│   ├── _layout.tsx            # 根布局
-│   ├── index.tsx              # 主聊天页
-│   ├── settings.tsx           # 设置页
-│   └── rag.tsx                # 知识库管理页
-├── src/
-│   ├── types/index.ts         # TypeScript 类型定义
-│   ├── constants/theme.ts     # 主题颜色常量
-│   ├── hooks/useTheme.ts      # 主题 Hook
-│   ├── store/index.ts         # Zustand 状态管理
-│   ├── services/
-│   │   ├── database.ts        # SQLite 数据库操作
-│   │   ├── deepseek.ts        # DeepSeek 对话 API
-│   │   ├── embedding.ts       # 阿里云向量嵌入 API
-│   │   ├── rag.ts             # RAG 检索增强服务
-│   │   └── voice.ts           # 语音录制/识别/合成
-│   ├── components/
-│   │   ├── MessageBubble.tsx   # 消息气泡 (Markdown渲染)
-│   │   ├── ChatInput.tsx       # 输入框 (文字/录音/图片)
-│   │   └── ConversationDrawer.tsx  # 对话列表抽屉
-│   └── utils/
-│       ├── vectorSearch.ts    # 余弦相似度搜索
-│       ├── markdown.ts        # Markdown 分块工具
-│       └── fileUtils.ts       # 文件操作工具
-├── assets/                     # 图标和启动图
-├── app.json                    # Expo 配置
-├── eas.json                    # EAS Build 配置
+├── app/                          # Expo Router 页面层
+│   ├── _layout.tsx               # 根布局（Stack 导航）
+│   ├── index.tsx                 # 主聊天页面
+│   ├── call.tsx                  # 语音通话页面（类似豆包打电话）
+│   ├── settings.tsx              # 设置页面
+│   └── rag.tsx                   # 知识库管理页面
+│
+├── src/                          # 核心代码层
+│   ├── components/               # UI 组件
+│   │   ├── MessageBubble.tsx     # 消息气泡（Markdown / 图片 / 搜索引用 / 工具调用）
+│   │   ├── ChatInput.tsx         # 输入框（文本 / 语音 / 图片）
+│   │   └── ConversationDrawer.tsx # 对话列表侧边栏
+│   │
+│   ├── services/                 # 后端服务层
+│   │   ├── deepseek.ts           # LLM API 调用（XHR 流式 + 自动重试）
+│   │   ├── agent.ts              # AI Agent 引擎（Function Calling 工具调度）
+│   │   ├── ragSpecialist.ts      # 多层 RAG 记忆管理（感性/理性/历史层）
+│   │   ├── rag.ts                # 通用 RAG（知识库检索）
+│   │   ├── embedding.ts          # 文本向量化（DashScope Embedding）
+│   │   ├── voice.ts              # 语音服务（ASR + TTS + 超时处理）
+│   │   ├── webSearch.ts          # 联网搜索（百度千帆）
+│   │   ├── imageGen.ts           # AI 绘图（DashScope wanx）
+│   │   └── database.ts           # SQLite 本地数据库
+│   │
+│   ├── store/                    # 全局状态
+│   │   └── index.ts              # Zustand Store（消息流 + RAG + Agent 编排）
+│   │
+│   ├── types/                    # TypeScript 类型定义
+│   │   └── index.ts              # 所有接口和类型
+│   │
+│   ├── config/                   # 配置管理
+│   │   └── models.ts             # AI 模型预设（对话模型 + Embedding 模型）
+│   │
+│   ├── constants/                # 常量
+│   │   └── theme.ts              # 主题配色（亮色 / 暗色）
+│   │
+│   ├── hooks/                    # React Hooks
+│   │   └── useTheme.ts           # 主题 Hook
+│   │
+│   └── utils/                    # 工具函数
+│       ├── fileUtils.ts          # 文件操作（导入导出 / 图片保存）
+│       ├── markdown.ts           # Markdown 分块处理
+│       └── vectorSearch.ts       # 余弦相似度向量检索
+│
+├── android/                      # Android 原生代码
+├── assets/                       # 静态资源
 ├── package.json
 ├── tsconfig.json
-└── babel.config.js
+├── app.json                      # Expo 配置
+└── eas.json                      # EAS Build 配置
 ```
 
-## 🚀 快速开始
+---
+
+## 核心架构
+
+```
+用户输入（文字 / 语音 / 图片 / 通话）
+              │
+              ▼
+  ┌───────────────────────────────────┐
+  │          Zustand Store            │
+  │   消息管理 · 状态编排 · 持久化      │
+  └──────────┬────────────────────────┘
+             │
+    ┌────────┴────────┐
+    ▼                 ▼
+ RAG 专员          AI Agent
+(多层记忆检索)    (工具调度引擎)
+    │                 │
+    │           ┌─────┼─────┐
+    │           ▼     ▼     ▼
+    │       联网搜索  绘图   直接回复
+    │       (百度)  (阿里云)
+    │                 │
+    └────────┬────────┘
+             ▼
+      DeepSeek / 其他 LLM
+      (流式输出 · XHR · 自动重试)
+             │
+             ▼
+       消息气泡渲染
+  (Markdown · 图片 · 搜索引用)
+```
+
+### 多层 RAG 记忆系统
+
+| 层级 | 说明 | 更新策略 |
+|------|------|---------|
+| 感性层 (emotional) | 分析用户情感状态和态度 | 每次对话后更新，滚动保留最近 10 条 |
+| 理性层 (rational) | 构建用户画像（兴趣/专业/风格） | 累积足够消息后整体重写 |
+| 历史层 (historical) | 所有对话的长期记忆 | 每次对话后追加 |
+| 通用层 (general) | 用户上传的知识库文档 | 手动上传 Markdown |
+
+### AI Agent 工具链
+
+Agent 使用 DeepSeek Function Calling 机制自主决策：
+
+1. **web_search** — 需要实时信息、新闻、不确定事实时触发
+2. **image_gen** — 用户明确要求画图时触发
+3. **直接回复** — 不需要工具时直接流式回答
+
+### 网络容错机制
+
+- API 请求自动重试（最多 2 次，间隔 1.5s）
+- 4xx 客户端错误不重试（如 401/429）
+- XHR 流式传输 120s 超时保护
+- 语音识别 30s 超时 + 多方案降级
+- 用户友好的错误提示（中文）
+
+---
+
+## 技术栈
+
+| 领域 | 技术方案 |
+|------|---------|
+| 框架 | React Native (Expo SDK 52) |
+| 导航 | Expo Router 4 |
+| 状态管理 | Zustand |
+| 数据库 | expo-sqlite (SQLite) |
+| LLM | DeepSeek V3 / 通义千问 / Kimi / GLM / GPT (OpenAI 格式) |
+| Embedding | 阿里云 DashScope text-embedding-v3 |
+| ASR | 阿里云 Paraformer v2 (FormData 上传) |
+| TTS | expo-speech (系统原生) |
+| 联网搜索 | 百度千帆 API |
+| AI 绘图 | 阿里云 DashScope wanx-v1 |
+| 流式传输 | XMLHttpRequest SSE (React Native 兼容) |
+| Markdown | react-native-markdown-display |
+
+---
+
+## 快速开始
 
 ### 环境要求
 
-- **Node.js** >= 18
-- **npm** 或 **yarn**
-- **Expo CLI**: `npm install -g expo-cli`
-- **EAS CLI**: `npm install -g eas-cli` (用于构建 APK)
-- **Android Studio** (可选，用于本地构建)
+- Node.js 18+
+- Expo CLI (`npm install -g expo-cli`)
+- Android Studio (用于 Android 构建) 或 iOS 开发环境
 
-### 安装运行
+### 安装和运行
 
 ```bash
-# 1. 安装依赖
+# 克隆项目
+git clone <repo-url>
 cd telephone_ai_anywhere
+
+# 安装依赖
 npm install
 
-# 2. 启动开发服务器
+# 启动开发服务器
 npx expo start
 
-# 3. 在手机上安装 Expo Go 扫码预览
-#    或使用 Android 模拟器
+# 运行 Android
+npx expo run:android
 ```
-
-### 构建 APK（vivo 等安卓手机可安装）
-
-**推荐：EAS 云构建（免费档可用）**
-
-1) 注册/登录 Expo 账号（免费）
-2) 运行云构建命令（输出 APK）
-
-说明：EAS 云构建对 Android APK 提供免费额度（以 Expo 官方为准）。
-
-**不再推荐本地构建**（需要完整 Android 环境 + Java 17 + SDK，配置成本更高）。
-
-### 预览与调试（不需要反复安装 APK）
-
-**方式一：Expo Go（最快速预览）**
-
-1) 手机上安装 Expo Go
-2) 电脑启动开发服务器（`npx expo start`）
-3) 手机扫码即可实时预览，改代码自动刷新
-
-**方式二：Development Build（功能更完整）**
-
-如果你的项目使用了原生模块或需要更完整的功能，可用 EAS 云构建 Development Build。
-之后手机只需安装一次开发版 App，改代码后不用反复卸载重装。
 
 ### API 配置
 
-打开应用后进入 **设置** 页面：
+在应用的 **设置** 页面中配置：
 
-1. **DeepSeek API Key** — 用于 AI 对话（[获取地址](https://platform.deepseek.com/)）
-2. **阿里云 DashScope API Key** — 用于文本向量化和语音识别（[获取地址](https://dashscope.console.aliyun.com/)）
+1. **对话模型 API Key**（必需）— 支持 DeepSeek / 通义千问 / Kimi / GLM / OpenAI
+2. **阿里云 DashScope API Key** — 用于 Embedding(RAG)、语音识别、图片生成
+3. **百度千帆 API Key** — 用于联网搜索（可选）
 
-## 🔧 VS Code 推荐插件
+---
 
-开发此项目时，建议安装以下 VS Code 插件：
+## 语音通话功能
 
-| 插件 | 说明 |
-|------|------|
-| **ES7+ React/Redux/React-Native Snippets** | React Native 代码片段 |
-| **Expo Tools** | Expo 项目支持 |
-| **TypeScript Importer** | 自动导入 TypeScript 模块 |
-| **Prettier** | 代码格式化 |
-| **ESLint** | 代码检查 |
-| **React Native Tools** | React Native 调试工具 |
-| **Android iOS Emulator** | 快速启动模拟器 |
-| **Color Highlight** | 颜色值预览 |
+类似豆包电话功能，全屏通话界面：
 
-## 📝 使用说明
+- 点击通话按钮进入通话模式
+- **按住说话**：按住大圆按钮录音，松开自动识别并发送
+- AI 回复后自动 TTS 朗读
+- 通话中拥有完整的 RAG 记忆上下文
+- 通话记录自动保存到当前对话中
 
-1. **聊天** — 打开即用，类似 DeepSeek 界面，支持 Markdown 渲染
-2. **语音** — 点击 🎤 按钮录音，自动识别为文字发送
-3. **图片** — 点击 📷 按钮选择图片，AI 会分析图片内容
-4. **知识库** — 上传 .md 文件，所有对话自动存入 RAG
-5. **导出** — 设置页可导出/导入全部数据（JSON 格式）
-6. **长按 AI 回复** — 语音播放 AI 的回复
+---
 
-## 📄 License
+## 构建发布
 
-MIT 
+```bash
+# 本地 debug APK
+npm run build:apk:debug
+
+# 本地 release APK
+npm run build:apk:local
+
+# EAS 云端构建
+npm run build:apk:eas
+
+# 生产 AAB（Google Play）
+npm run build:aab
+```
+
+---
+
+## 许可证
+
+MIT License

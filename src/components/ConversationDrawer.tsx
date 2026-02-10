@@ -27,7 +27,6 @@ export function ConversationDrawer({ onClose }: Props) {
     selectConversation,
     newConversation,
     deleteConversation,
-    renameConversation,
   } = useAppStore();
 
   const handleSelect = async (id: string) => {
@@ -67,7 +66,7 @@ export function ConversationDrawer({ onClose }: Props) {
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.text }]}>对话列表</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-          <Text style={{ color: colors.textSecondary, fontSize: 20 }}>✕</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>✕</Text>
         </TouchableOpacity>
       </View>
 
@@ -128,7 +127,7 @@ export function ConversationDrawer({ onClose }: Props) {
             router.push('/settings');
           }}
         >
-          <Text style={{ color: colors.textSecondary }}>⚙️ 设置</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 14 }}>设置</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.footerBtn}
@@ -137,7 +136,7 @@ export function ConversationDrawer({ onClose }: Props) {
             router.push('/rag');
           }}
         >
-          <Text style={{ color: colors.textSecondary }}>📚 知识库</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 14 }}>知识库</Text>
         </TouchableOpacity>
       </View>
     </View>

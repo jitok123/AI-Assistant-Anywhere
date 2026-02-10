@@ -16,8 +16,19 @@ export interface Message {
   content: string;
   type: 'text' | 'voice' | 'image';
   imageUri?: string;
+  /** Agent 工具调用记录 */
+  toolCalls?: ToolCallRecord[];
+  /** 搜索结果（联网搜索时） */
+  searchResults?: WebSearchResult[];
+  /** 生成的图片URL */
+  generatedImageUrl?: string;
   createdAt: number;
 }
+
+// ==================== RAG 多层体系 ====================
+
+/** RAG 层级类型 */
+export type RagLayer = 'emotional' | 'rational' | 'historical' | 'general';
 
 /** RAG 文本块 */
 export interface RagChunk {
@@ -26,12 +37,69 @@ export interface RagChunk {
   sourceId: string;
   content: string;
   embedding: number[] | null;
+  /** RAG 层级 */
+  layer: RagLayer;
   createdAt: number;
 }
 
+/** RAG 搜索结果 */
+export interface RagSearchResult {
+  id: string;
+  content: string;
+  score: number;
+  source: string;
+  layer: RagLayer;
+}
+
+// ==================== AI Agent ====================
+
+/** Agent 可用工具类型 */
+export type AgentToolType = 'web_search' | 'image_gen' | 'rag_query';
+
+/** 工具调用记录 */
+export interface ToolCallRecord {
+  tool: AgentToolType;
+  input: string;
+  output: string;
+  timestamp: number;
+}
+
+/** Agent 函数定义（OpenAI function calling 格式） */
+export interface AgentToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, any>;
+      required?: string[];
+    };
+  };
+}
+
+// ==================== 联网搜索 ====================
+
+/** 网页搜索结果 */
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+// ==================== 图片生成 ====================
+
+/** 图片生成结果 */
+export interface ImageGenResult {
+  url: string;
+  revisedPrompt?: string;
+}
+
+// ==================== 应用设置 ====================
+
 /** 应用设置 */
 export interface AppSettings {
-  // ── 🤖 对话模型配置（详见 config/models.ts）──
+  // ── 🤖 对话模型配置 ──
   deepseekApiKey: string;
   deepseekBaseUrl: string;
   deepseekModel: string;
@@ -44,6 +112,13 @@ export interface AppSettings {
   ragTopK: number;
   chunkSize: number;
   chunkOverlap: number;
+  // ── 🔍 联网搜索配置 ──
+  webSearchEnabled: boolean;
+  baiduQianfanApiKey: string;
+  // ── 🎨 图片生成配置 ──
+  imageGenEnabled: boolean;
+  // ── 🧠 Agent 配置 ──
+  agentEnabled: boolean;
   // ── 🎨 通用配置 ──
   theme: 'light' | 'dark' | 'auto';
   voiceEnabled: boolean;
@@ -63,6 +138,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ragTopK: 5,
   chunkSize: 500,
   chunkOverlap: 50,
+  webSearchEnabled: false,
+  baiduQianfanApiKey: '',
+  imageGenEnabled: false,
+  agentEnabled: false,
   theme: 'auto',
   voiceEnabled: true,
   autoSaveToRag: true,
@@ -72,12 +151,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /** 聊天模式 */
 export type ChatMode = 'text' | 'voice';
 
-/** RAG 搜索结果 */
-export interface RagSearchResult {
-  id: string;
-  content: string;
-  score: number;
-  source: string;
+/** Chat Completion 选项 */
+export interface ChatCompletionOptions {
+  messages: ApiMessage[];
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  tools?: any[];
+  onStream?: StreamCallback;
 }
 
 /** 导出数据格式 */
@@ -92,8 +175,12 @@ export interface ExportData {
 
 /** DeepSeek API 消息格式 */
 export interface ApiMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string | ApiMessageContent[];
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | ApiMessageContent[] | null;
+  /** 函数调用（assistant 角色） */
+  tool_calls?: any[];
+  /** 工具调用 ID（tool 角色） */
+  tool_call_id?: string;
 }
 
 export interface ApiMessageContent {
