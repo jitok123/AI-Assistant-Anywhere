@@ -3,6 +3,7 @@
  * 用于文本向量化
  */
 
+// 阿里云 DashScope Text Embedding API 端点
 const DASHSCOPE_API_URL =
   'https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding';
 
@@ -12,6 +13,15 @@ export async function getEmbedding(
   apiKey: string,
   model: string = 'text-embedding-v3'
 ): Promise<number[]> {
+  // 清理和验证输入
+  const cleanText = text.trim();
+  if (!cleanText) {
+    throw new Error('文本内容不能为空');
+  }
+  if (!apiKey) {
+    throw new Error('API Key 不能为空');
+  }
+  
   const response = await fetch(DASHSCOPE_API_URL, {
     method: 'POST',
     headers: {
@@ -21,10 +31,7 @@ export async function getEmbedding(
     body: JSON.stringify({
       model,
       input: {
-        texts: [text],
-      },
-      parameters: {
-        text_type: 'query',
+        texts: [cleanText],
       },
     }),
   });
@@ -51,13 +58,20 @@ export async function getBatchEmbeddings(
   model: string = 'text-embedding-v3'
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
+  if (!apiKey) {
+    throw new Error('API Key 不能为空');
+  }
+
+  // 过滤空文本
+  const validTexts = texts.map(t => t.trim()).filter(t => t.length > 0);
+  if (validTexts.length === 0) return [];
 
   // DashScope 批量限制
   const batchSize = 25;
   const results: number[][] = [];
 
-  for (let i = 0; i < texts.length; i += batchSize) {
-    const batch = texts.slice(i, i + batchSize);
+  for (let i = 0; i < validTexts.length; i += batchSize) {
+    const batch = validTexts.slice(i, i + batchSize);
     
     const response = await fetch(DASHSCOPE_API_URL, {
       method: 'POST',
@@ -69,9 +83,6 @@ export async function getBatchEmbeddings(
         model,
         input: {
           texts: batch,
-        },
-        parameters: {
-          text_type: 'document',
         },
       }),
     });

@@ -9,6 +9,16 @@ let recording: Audio.Recording | null = null;
 /** 开始录音 */
 export async function startRecording(): Promise<void> {
   try {
+    // 清理之前可能存在的 recording 对象
+    if (recording) {
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch (e) {
+        console.warn('清理旧录音对象时出错:', e);
+      }
+      recording = null;
+    }
+
     const permission = await Audio.requestPermissionsAsync();
     if (!permission.granted) {
       throw new Error('未授予麦克风权限');

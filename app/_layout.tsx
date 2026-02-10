@@ -4,6 +4,7 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { useAppStore } from '../src/store';
 import { useIsDark } from '../src/hooks/useTheme';
 
@@ -13,11 +14,14 @@ export default function RootLayout() {
   const isDark = useIsDark();
 
   useEffect(() => {
-    init();
+    console.log('[RootLayout] 开始初始化应用');
+    init().catch((err) => {
+      console.error('[RootLayout] 初始化错误:', err);
+    });
   }, []);
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
@@ -49,6 +53,6 @@ export default function RootLayout() {
           }}
         />
       </Stack>
-    </>
+    </ErrorBoundary>
   );
 }

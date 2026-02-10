@@ -1,7 +1,7 @@
 /**
  * 文件操作工具
  */
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import type { ExportData } from '../types';

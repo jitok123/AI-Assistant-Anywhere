@@ -102,13 +102,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   /** 初始化应用 */
   init: async () => {
     try {
+      console.log('[App] 开始初始化...');
+      
+      console.log('[App] 初始化数据库...');
       await initDatabase();
+      
+      console.log('[App] 加载设置...');
       await get().loadSettings();
+      
+      console.log('[App] 加载对话列表...');
       await get().loadConversations();
+      
+      console.log('[App] 刷新RAG统计...');
       await get().refreshRagStats();
+      
+      console.log('[App] 初始化完成');
       set({ initialized: true });
     } catch (error) {
-      console.error('初始化失败:', error);
+      console.error('[App] 初始化失败:', error);
+      // 即使出错也要让应用继续，避免卡在启动画面
+      set({ initialized: true });
     }
   },
 

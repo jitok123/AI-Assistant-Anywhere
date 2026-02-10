@@ -11,8 +11,6 @@ import {
   StyleSheet,
   Animated,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../hooks/useTheme';
@@ -129,9 +127,6 @@ export function ChatInput() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
       <View style={[styles.container, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
         {/* 图片按钮 */}
         <TouchableOpacity
@@ -209,7 +204,6 @@ export function ChatInput() {
           </TouchableOpacity>
         )}
       </View>
-    </KeyboardAvoidingView>
   );
 }
 
