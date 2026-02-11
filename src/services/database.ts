@@ -395,6 +395,17 @@ export async function clearAllRagChunks(): Promise<void> {
   await database.runAsync('DELETE FROM rag_chunks');
 }
 
+/** 清空所有应用数据（用于重置应用） */
+export async function clearAllData(): Promise<void> {
+  const database = getDatabase();
+  await database.execAsync(`
+    DELETE FROM messages;
+    DELETE FROM conversations;
+    DELETE FROM rag_chunks;
+    DELETE FROM settings;
+  `);
+}
+
 // ==================== 设置管理 ====================
 
 /** 获取设置值 */

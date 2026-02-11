@@ -21,7 +21,6 @@ import { useAppStore } from '../src/store';
 import { MessageBubble } from '../src/components/MessageBubble';
 import { ChatInput } from '../src/components/ChatInput';
 import { ConversationDrawer } from '../src/components/ConversationDrawer';
-import { speak, stopSpeaking } from '../src/services/voice';
 import type { Message } from '../src/types';
 
 export default function ChatScreen() {
@@ -29,7 +28,6 @@ export default function ChatScreen() {
   const router = useRouter();
   const flatListRef = useRef<FlatList>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [speakingId, setSpeakingId] = useState<string | null>(null);
 
   const {
     messages,
@@ -37,8 +35,6 @@ export default function ChatScreen() {
     initialized,
     currentConversationId,
     conversations,
-    chatMode,
-    setChatMode,
     newConversation,
     settings,
   } = useAppStore();
@@ -50,17 +46,6 @@ export default function ChatScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, []);
-
-  const toggleSpeak = (message: Message) => {
-    if (speakingId === message.id) {
-      stopSpeaking();
-      setSpeakingId(null);
-    } else {
-      stopSpeaking();
-      setSpeakingId(message.id);
-      speak(message.content, () => setSpeakingId(null));
-    }
-  };
 
   if (!initialized) {
     return (
@@ -99,23 +84,6 @@ export default function ChatScreen() {
         </Text>
 
         <View style={styles.headerRight}>
-          {/* 聊天模式切换 */}
-          <TouchableOpacity
-            onPress={() => setChatMode(chatMode === 'text' ? 'voice' : 'text')}
-            style={[
-              styles.modeBtn,
-              { backgroundColor: chatMode === 'voice' ? colors.primary + '20' : 'transparent' },
-            ]}
-            activeOpacity={0.6}
-          >
-            <Text style={[
-              styles.modeBtnText,
-              { color: chatMode === 'voice' ? colors.primary : colors.textSecondary },
-            ]}>
-              {chatMode === 'voice' ? '语音' : '文字'}
-            </Text>
-          </TouchableOpacity>
-
           {/* 新建对话 */}
           <TouchableOpacity
             onPress={() => newConversation()}
@@ -124,17 +92,6 @@ export default function ChatScreen() {
           >
             <View style={[styles.newChatIcon, { borderColor: colors.primary }]}>
               <Text style={[styles.newChatPlus, { color: colors.primary }]}>+</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* 通话按钮 */}
-          <TouchableOpacity
-            onPress={() => router.push('/call')}
-            style={styles.headerBtn}
-            activeOpacity={0.6}
-          >
-            <View style={[styles.callIconSmall, { backgroundColor: colors.success }]}>
-              <Text style={styles.callIconText}>T</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -150,7 +107,7 @@ export default function ChatScreen() {
             随身AI助手
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            多层记忆 · 联网搜索 · 图片生成 · 语音通话
+            多层记忆 · 联网搜索 · 图片生成 · 图片理解
           </Text>
 
           {!settings.deepseekApiKey && (
@@ -169,12 +126,7 @@ export default function ChatScreen() {
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onLongPress={() => item.role === 'assistant' && toggleSpeak(item)}
-            >
-              <MessageBubble message={item} />
-            </TouchableOpacity>
+            <MessageBubble message={item} />
           )}
           contentContainerStyle={styles.messageList}
           onContentSizeChange={scrollToBottom}
@@ -282,19 +234,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginTop: -1,
-  },
-  // 通话小图标
-  callIconSmall: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  callIconText: {
-    color: '#FFF',
-    fontSize: 11,
-    fontWeight: '800',
   },
   messageList: {
     paddingVertical: 12,

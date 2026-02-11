@@ -1,6 +1,6 @@
 /**
  * 聊天输入框组件
- * 支持文本输入、语音输入、图片选择
+ * 支持文本输入、图片选择
  */
 import React, { useState, useRef } from 'react';
 import {
@@ -9,99 +9,47 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  Animated,
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../hooks/useTheme';
 import { useAppStore } from '../store';
-import {
-  startRecording,
-  stopRecording,
-  recognizeSpeech,
-} from '../services/voice';
 import { saveImageLocally } from '../utils/fileUtils';
 
 export function ChatInput() {
   const colors = useTheme();
   const [text, setText] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
-  const { sendMessage, isLoading, stopGeneration, chatMode, settings } =
+  const { sendMessage, isLoading, stopGeneration, settings } =
     useAppStore();
 
-  // 发送文本消息
+  // 发送消息（文本 + 可选图片）
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed && !pendingImage) return;
+    if (isLoading) return;
+
+    const currentText = trimmed;
+    const currentImage = pendingImage;
     setText('');
+    setPendingImage(null);
+
     try {
-      await sendMessage(trimmed, 'text');
+      if (currentImage) {
+        await sendMessage(currentText || '请描述这张图片', 'image', currentImage);
+      } else {
+        await sendMessage(currentText, 'text');
+      }
     } catch (error: any) {
       Alert.alert('错误', error.message);
     }
   };
 
-  // 开始/停止录音
-  const toggleRecording = async () => {
-    if (isRecording) {
-      // 停止录音
-      setIsRecording(false);
-      pulseAnim.stopAnimation();
-      Animated.timing(pulseAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-
-      const uri = await stopRecording();
-      if (uri && settings.dashscopeApiKey) {
-        try {
-          const recognizedText = await recognizeSpeech(
-            uri,
-            settings.dashscopeApiKey
-          );
-          if (recognizedText) {
-            if (chatMode === 'voice') {
-              // 语音模式直接发送
-              await sendMessage(recognizedText, 'voice');
-            } else {
-              // 文本模式填入输入框
-              setText(recognizedText);
-            }
-          }
-        } catch (error: any) {
-          Alert.alert('语音识别失败', error.message);
-        }
-      } else if (uri) {
-        Alert.alert('提示', '请先在设置中配置阿里云 API Key 以使用语音识别');
-      }
-    } else {
-      // 开始录音
-      try {
-        await startRecording();
-        setIsRecording(true);
-        // 录音动画
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(pulseAnim, {
-              toValue: 1.3,
-              duration: 600,
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseAnim, {
-              toValue: 1,
-              duration: 600,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
-      } catch (error: any) {
-        Alert.alert('录音失败', error.message);
-      }
-    }
+  // 移除待附加的图片
+  const removePendingImage = () => {
+    setPendingImage(null);
   };
 
   // 选择图片
@@ -110,15 +58,12 @@ export function ChatInput() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 0.8,
-        allowsEditing: true,
       });
 
       if (!result.canceled && result.assets[0]) {
         const localUri = await saveImageLocally(result.assets[0].uri);
         if (localUri) {
-          const caption = text.trim() || '';
-          setText('');
-          await sendMessage(caption || '请描述这张图片', 'image', localUri);
+          setPendingImage(localUri);
         }
       }
     } catch (error: any) {
@@ -127,7 +72,24 @@ export function ChatInput() {
   };
 
   return (
-      <View style={[styles.container, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
+      <View>
+        {/* 图片预览 */}
+        {pendingImage && (
+          <View style={[styles.imagePreviewRow, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
+            <View style={styles.imagePreviewWrap}>
+              <View style={[styles.imagePreviewPlaceholder, { backgroundColor: colors.inputBg }]}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>📷 图片已选择</Text>
+              </View>
+              <TouchableOpacity
+                onPress={removePendingImage}
+                style={styles.imageRemoveBtn}
+              >
+                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        <View style={[styles.container, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
         {/* 图片按钮 */}
         <TouchableOpacity
           onPress={pickImage}
@@ -157,28 +119,6 @@ export function ChatInput() {
           />
         </View>
 
-        {/* 语音按钮 */}
-        <TouchableOpacity
-          onPress={toggleRecording}
-          style={[styles.iconBtn]}
-          disabled={isLoading}
-          activeOpacity={0.6}
-        >
-          <Animated.View style={[
-            styles.micBtn,
-            {
-              backgroundColor: isRecording ? colors.error + '20' : 'transparent',
-              borderColor: isRecording ? colors.error : colors.border,
-              transform: [{ scale: pulseAnim }],
-            },
-          ]}>
-            <View style={[
-              styles.micDot,
-              { backgroundColor: isRecording ? colors.error : colors.textSecondary },
-            ]} />
-          </Animated.View>
-        </TouchableOpacity>
-
         {/* 发送/停止按钮 */}
         {isLoading ? (
           <TouchableOpacity
@@ -197,12 +137,13 @@ export function ChatInput() {
                 backgroundColor: text.trim() ? colors.primary : colors.border,
               },
             ]}
-            disabled={!text.trim()}
+            disabled={!text.trim() && !pendingImage}
             activeOpacity={0.6}
           >
             <Text style={styles.sendBtnText}>↑</Text>
           </TouchableOpacity>
         )}
+      </View>
       </View>
   );
 }
@@ -280,5 +221,30 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 2,
     backgroundColor: '#FFF',
+  },
+  // 图片预览
+  imagePreviewRow: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderTopWidth: 0.5,
+  },
+  imagePreviewWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  imagePreviewPlaceholder: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  imageRemoveBtn: {
+    marginLeft: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

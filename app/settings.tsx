@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAppStore } from '../src/store';
 import { exportData, importDataFile } from '../src/utils/fileUtils';
+import { clearAllData } from '../src/services/database';
 import {
   CHAT_MODEL_PRESETS,
   EMBEDDING_MODEL_PRESETS,
@@ -74,6 +75,39 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  /** 清除所有数据 */
+  const handleClearAllData = () => {
+    Alert.alert(
+      '⚠️ 警告',
+      '此操作将永久删除所有聊天记录、RAG数据和设置！\n\n数据无法恢复，请谨慎！',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认清除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearAllData();
+              Alert.alert('成功', '所有数据已清除，应用即将重新加载', [
+                {
+                  text: '确定',
+                  onPress: () => {
+                    // 重新初始化store
+                    const state = useAppStore.getState();
+                    state.loadConversations();
+                    state.loadSettings();
+                  },
+                },
+              ]);
+            } catch (error: any) {
+              Alert.alert('清除失败', error.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   /** 选择对话模型预设 */
@@ -446,7 +480,6 @@ export default function SettingsScreen() {
             <TextInput
               style={[
                 styles.input,
-                styles.multilineInput,
                 { color: colors.text, borderColor: colors.border },
               ]}
               value={settings.systemPrompt}
@@ -474,12 +507,20 @@ export default function SettingsScreen() {
               <Text style={styles.actionBtnText}>📤 导出</Text>
             </TouchableOpacity>
           </Row>
-          <Row label="导入数据" isLast>
+          <Row label="导入数据">
             <TouchableOpacity
               onPress={handleImport}
               style={[styles.actionBtn, { backgroundColor: colors.success }]}
             >
               <Text style={styles.actionBtnText}>📥 导入</Text>
+            </TouchableOpacity>
+          </Row>
+          <Row label="清除所有数据" hint="此操作不可恢复！" isLast>
+            <TouchableOpacity
+              onPress={handleClearAllData}
+              style={[styles.actionBtn, { backgroundColor: colors.error }]}
+            >
+              <Text style={styles.actionBtnText}>🗑️ 清空</Text>
             </TouchableOpacity>
           </Row>
         </Section>

@@ -196,7 +196,9 @@ export async function updateEmotionalLayer(
         settings.embeddingModel,
       );
       await updateChunkEmbedding(id, embedding);
-    } catch {}
+    } catch (embErr) {
+      console.warn('[RAG] 感性层 embedding 失败:', embErr);
+    }
 
     // 滚动更新：只保留最近 10 条情感分析
     await clearOldRagChunks('emotional', 10);
@@ -289,11 +291,13 @@ export async function updateRationalLayer(
         settings.embeddingModel,
       );
       for (let i = 0; i < ragChunks.length; i++) {
-        if (embeddings[i]) {
+        if (embeddings[i] && embeddings[i].length > 0) {
           await updateChunkEmbedding(ragChunks[i].id, embeddings[i]);
         }
       }
-    } catch {}
+    } catch (embErr) {
+      console.warn('[RAG] 理性层 embedding 失败:', embErr);
+    }
   } catch (error) {
     console.error('理性层更新失败:', error);
   }
@@ -349,12 +353,12 @@ export async function addToHistoricalLayer(
         settings.embeddingModel,
       );
       for (let i = 0; i < ragChunks.length; i++) {
-        if (embeddings[i]) {
+        if (embeddings[i] && embeddings[i].length > 0) {
           await updateChunkEmbedding(ragChunks[i].id, embeddings[i]);
         }
       }
     } catch (err) {
-      console.error('历史层 embedding 计算失败:', err);
+      console.warn('[RAG] 历史层 embedding 计算失败:', err);
     }
   } catch (error) {
     console.error('历史层保存失败:', error);

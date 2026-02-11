@@ -138,14 +138,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ragTopK: 5,
   chunkSize: 500,
   chunkOverlap: 50,
-  webSearchEnabled: false,
+  webSearchEnabled: true,
   baiduQianfanApiKey: '',
-  imageGenEnabled: false,
-  agentEnabled: false,
+  imageGenEnabled: true,
+  agentEnabled: true,
   theme: 'auto',
   voiceEnabled: true,
   autoSaveToRag: true,
-  systemPrompt: '你是一个智能随身助手，请用中文回答用户的问题。你可以参考以下相关上下文来回答：',
+  systemPrompt: '你是一个智能随身助手，请用中文回答用户的问题。你具有联网搜索能力（可查询实时新闻和最新信息）和图片生成能力（可根据描述创建图片）。你可以参考以下相关上下文来回答：',
 };
 
 /** 聊天模式 */

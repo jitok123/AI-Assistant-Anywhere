@@ -97,80 +97,24 @@ export async function isSpeaking(): Promise<boolean> {
 
 /**
  * 阿里云语音识别 (ASR)
- * 
- * 策略：
- *   1. 首选：将本地录音文件通过 FormData 上传给 Paraformer 实时识别
- *   2. 降级：使用 SenseVoice 短音频识别
- * 
- * 注意：DashScope 的 file_urls 参数需要公网可达的 URL，
- * 本地 file:/// URI 无法被服务器下载，因此统一使用 FormData 上传方式。
+ * 使用千问3-ASR-Flash模型进行短音频识别（<5分钟）
+ * 官方文档：https://help.aliyun.com/zh/model-studio/getting-started/models
  */
 export async function recognizeSpeech(
   audioUri: string,
   apiKey: string
 ): Promise<string> {
-  try {
-    return await recognizeSpeechDirect(audioUri, apiKey);
-  } catch (error: any) {
-    console.warn('直接识别失败，尝试降级方案:', error.message);
-    try {
-      return await recognizeSpeechSenseVoice(audioUri, apiKey);
-    } catch {
-      throw new Error('语音识别失败，请检查网络或手动输入');
-    }
-  }
-}
-
-/**
- * 方案1：Paraformer 实时识别（FormData 上传本地文件）
- */
-async function recognizeSpeechDirect(
-  audioUri: string,
-  apiKey: string
-): Promise<string> {
   const formData = new FormData();
+  
+  // 上传音频文件
   formData.append('file', {
     uri: audioUri,
     type: 'audio/m4a',
     name: 'recording.m4a',
   } as any);
-  formData.append('model', 'paraformer-v2');
-
-  const response = await fetchWithTimeout(
-    'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/realtime-recognition',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: formData,
-    },
-    30000,
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ASR 请求失败 (${response.status}): ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data?.output?.sentence?.text || data?.output?.text || '';
-}
-
-/**
- * 方案2：SenseVoice 短音频识别（降级方案）
- */
-async function recognizeSpeechSenseVoice(
-  audioUri: string,
-  apiKey: string
-): Promise<string> {
-  const formData = new FormData();
-  formData.append('file', {
-    uri: audioUri,
-    type: 'audio/m4a',
-    name: 'recording.m4a',
-  } as any);
-  formData.append('model', 'sensevoice-v1');
+  
+  // 使用千问3-ASR-Flash模型
+  formData.append('model', 'qwen3-asr-flash');
 
   const response = await fetchWithTimeout(
     'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription',
@@ -185,11 +129,19 @@ async function recognizeSpeechSenseVoice(
   );
 
   if (!response.ok) {
-    throw new Error(`语音识别失败: ${response.status}`);
+    const errorText = await response.text();
+    throw new Error(`语音识别失败 (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
-  return data?.output?.text || '';
+  
+  // 提取识别文本
+  const text = data?.output?.text || '';
+  if (!text) {
+    throw new Error('语音识别返回为空');
+  }
+  
+  return text;
 }
 
 /**

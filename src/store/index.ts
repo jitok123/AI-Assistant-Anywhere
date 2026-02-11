@@ -141,6 +141,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     }
+    // 迁移：旧版默认关闭了 Agent 功能，新版默认开启
+    const migrated = stored['_agentMigrationV1'];
+    if (!migrated) {
+      settings.agentEnabled = true;
+      settings.webSearchEnabled = true;
+      settings.imageGenEnabled = true;
+      await setSetting('agentEnabled', 'true');
+      await setSetting('webSearchEnabled', 'true');
+      await setSetting('imageGenEnabled', 'true');
+      await setSetting('_agentMigrationV1', 'done');
+    }
     set({ settings });
   },
 
@@ -297,7 +308,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // ── 步骤3：AI Agent 处理（含工具调用决策） ──
-      const agentResult = await agentProcess(
+      // 图片消息使用 DashScope 视觉模型直接处理（绕过 Agent）
+      let agentResult;
+      if (imageUri && settings.dashscopeApiKey) {
+        const visionContent = await chatCompletion(
+          apiMessages,
+          settings.dashscopeApiKey,
+          'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          'qwen-vl-max',
+          (chunk: string, done: boolean) => {
+            set({ streamingContent: chunk });
+            set((s) => ({
+              messages: s.messages.map((m) =>
+                m.id === aiMsg.id ? { ...m, content: chunk } : m
+              ),
+            }));
+          },
+          settings.temperature,
+          settings.maxTokens,
+        );
+        agentResult = { content: visionContent, toolCalls: [] };
+      } else {
+        agentResult = await agentProcess(
         apiMessages,
         settings,
         (chunk: string, done: boolean) => {
@@ -309,6 +341,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           }));
         },
       );
+      }
 
       // ── 步骤4：保存结果 ──
       aiMsg.content = agentResult.content;
@@ -339,22 +372,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
 
-      // ── 步骤5：后处理 - 更新多层 RAG ──
-      if (settings.autoSaveToRag && settings.dashscopeApiKey) {
-        // 传统 RAG 保存（通用层）
-        addChatToRag(
-          [userMsg, aiMsg],
-          settings.dashscopeApiKey,
-          settings.embeddingModel
-        ).catch((err) => console.error('RAG 保存失败:', err));
+      // ── 步骤5：后处理 - 更新多层 RAG（完全后台，不影响UI） ──
+      try {
+        if (settings.autoSaveToRag && settings.dashscopeApiKey) {
+          // 传统 RAG 保存（通用层）
+          addChatToRag(
+            [userMsg, aiMsg],
+            settings.dashscopeApiKey,
+            settings.embeddingModel
+          ).catch((err) => console.warn('[RAG] 保存失败:', err?.message));
 
-        // 多层 RAG 后处理（感性/理性/历史层更新）
-        const allMessages = await getMessages(convId);
-        postConversationUpdate(allMessages.slice(-6), settings)
-          .catch((err) => console.error('多层RAG更新失败:', err));
+          // 多层 RAG 后处理（感性/理性/历史层更新）
+          getMessages(convId).then((allMessages) => {
+            postConversationUpdate(allMessages.slice(-6), settings)
+              .catch((err) => console.warn('[RAG] 多层更新失败:', err?.message));
+          }).catch((err) => console.warn('[RAG] 获取消息失败:', err?.message));
+        }
+
+        get().refreshRagStats().catch(() => {});
+      } catch (ragErr) {
+        console.warn('[RAG] 后处理异常:', ragErr);
       }
-
-      await get().refreshRagStats();
     } catch (error: any) {
       if (error.name === 'AbortError') return;
 

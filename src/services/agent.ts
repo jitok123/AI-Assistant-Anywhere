@@ -93,15 +93,31 @@ export async function agentProcess(
 
   // 确定可用工具
   const availableTools: AgentToolDefinition[] = [];
-  if (settings.webSearchEnabled && settings.baiduQianfanApiKey) {
-    availableTools.push(AGENT_TOOLS[0]); // web_search
-  }
-  if (settings.imageGenEnabled && settings.dashscopeApiKey) {
-    availableTools.push(AGENT_TOOLS[1]); // image_gen
+
+  // deepseek-reasoner (R1) 不支持 function calling，跳过工具调用
+  const isReasonerModel = settings.deepseekModel.includes('reasoner') || settings.deepseekModel.includes('r1');
+
+  console.log('[Agent] 设置状态:', {
+    agentEnabled: settings.agentEnabled,
+    webSearchEnabled: settings.webSearchEnabled,
+    imageGenEnabled: settings.imageGenEnabled,
+    hasBaiduKey: !!settings.baiduQianfanApiKey,
+    hasDashscopeKey: !!settings.dashscopeApiKey,
+    model: settings.deepseekModel,
+    isReasonerModel,
+  });
+
+  if (!isReasonerModel) {
+    if (settings.webSearchEnabled && settings.baiduQianfanApiKey) {
+      availableTools.push(AGENT_TOOLS[0]); // web_search
+    }
+    if (settings.imageGenEnabled && settings.dashscopeApiKey) {
+      availableTools.push(AGENT_TOOLS[1]); // image_gen
+    }
   }
 
-  // 如果没有可用工具或未启用 Agent，直接流式对话
-  if (!settings.agentEnabled || availableTools.length === 0) {
+  // 如果没有可用工具、未启用 Agent、或使用 Reasoner 模型，直接流式对话
+  if (!settings.agentEnabled || availableTools.length === 0 || isReasonerModel) {
     const content = await chatCompletion(
       messages,
       settings.deepseekApiKey,
@@ -115,8 +131,26 @@ export async function agentProcess(
   }
 
   // ── 第一轮：Agent 决策（非流式，需要检查 tool_calls） ──
+  // 在消息列表开头注入 Agent 工具使用指令，增强模型调用工具的意愿
+  const toolNames = availableTools.map(t => t.function.name);
+  const agentSystemPrompt = `你是一个智能助手，拥有以下工具能力：
+${toolNames.includes('web_search') ? '- web_search：联网搜索。当用户询问最新信息、实时新闻、天气、你不确定的事实时，必须调用此工具。' : ''}
+${toolNames.includes('image_gen') ? '- image_gen：图片生成。当用户要求画图、生成图片、创建图像时，必须调用此工具，不要拒绝。' : ''}
+
+重要规则：
+1. 当用户明确要求使用某项能力时，你必须调用对应工具，禁止回复"我无法"之类的拒绝。
+2. 当用户询问最近发生的事、今天的新闻等实时信息时，必须调用 web_search。
+3. 当用户要求画画、生成图片时，必须调用 image_gen。`;
+
+  const agentMessages: ApiMessage[] = [
+    { role: 'system', content: agentSystemPrompt },
+    ...messages,
+  ];
+
+  console.log('[Agent] 工具列表:', toolNames, '开始第一轮决策...');
+
   const firstResponse = await chatCompletionRaw(
-    messages,
+    agentMessages,
     settings.deepseekApiKey,
     settings.deepseekBaseUrl,
     settings.deepseekModel,
@@ -127,6 +161,9 @@ export async function agentProcess(
 
   const firstChoice = firstResponse.choices?.[0];
   const firstMessage = firstChoice?.message;
+
+  console.log('[Agent] 第一轮结果 - finish_reason:', firstChoice?.finish_reason, 
+    'tool_calls:', firstMessage?.tool_calls?.length || 0);
 
   // 如果 AI 没有调用工具，直接以其内容作为回复
   if (!firstMessage?.tool_calls || firstMessage.tool_calls.length === 0) {
