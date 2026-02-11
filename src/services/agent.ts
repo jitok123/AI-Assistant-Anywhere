@@ -1,20 +1,18 @@
 /**
- * AI Agent 服务
- * 
- * 核心决策引擎，负责：
- * 1. 接收用户输入和 RAG 上下文
- * 2. 决定是否需要调用工具（联网搜索、图片生成）
- * 3. 使用 Function Calling 机制调度工具
- * 4. 整合工具结果并生成最终回复
- * 
- * 架构：
- *   用户输入 + RAG上下文 → AI Agent (DeepSeek)
- *                            ├─→ web_search (百度千帆)
- *                            ├─→ image_gen (qwen-image-max)
- *                            └─→ 直接回复
+ * AI Agent 服务 — 基于关键词预路由的工具调用架构
+ *
+ * 核心思路：
+ *   不依赖 LLM 的 function calling（deepseek-reasoner 等模型不支持），
+ *   而是通过分析用户输入的关键词来决定工具调用。
+ *
+ * 路由逻辑：
+ *   用户输入 → 关键词检测
+ *     ├─ 匹配图片生成 → qwen-image-max 生成图片 → 返回图片URL
+ *     ├─ 匹配联网搜索 → Qwen + enable_search → 返回搜索增强回复
+ *     └─ 无匹配 → 原模型直接回复
  */
-import { chatCompletion, chatCompletionRaw } from './deepseek';
-import { webSearch, formatSearchResults } from './webSearch';
+import { chatCompletion } from './deepseek';
+import { qwenSearchChat } from './webSearch';
 import { generateImage } from './imageGen';
 import type {
   ApiMessage,
@@ -22,48 +20,49 @@ import type {
   StreamCallback,
   ToolCallRecord,
   WebSearchResult,
-  AgentToolDefinition,
 } from '../types';
 
-// ==================== 工具定义 ====================
+// ==================== 关键词检测 ====================
 
-/** Agent 可用工具列表（OpenAI Function Calling 格式） */
-const AGENT_TOOLS: AgentToolDefinition[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: '联网搜索最新信息。当用户询问实时新闻、最新数据、你不确定的事实、或需要网络上的信息时使用。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: '搜索关键词，应简洁精准',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'image_gen',
-      description: '生成图片。当用户明确要求画图、生成图片、创建图像时使用。',
-      parameters: {
-        type: 'object',
-        properties: {
-          prompt: {
-            type: 'string',
-            description: '详细的图片描述提示词，建议使用英文以获得更好效果',
-          },
-        },
-        required: ['prompt'],
-      },
-    },
-  },
+/** 图片生成意图关键词 */
+const IMAGE_GEN_PATTERNS: RegExp[] = [
+  /画[一个张幅]|画个|画[一]?[只条幅张]/,
+  /生成[一张个幅]*[图片图像照片画作]/,
+  /[帮请].*[画绘制生成].*[图片图像画照片]/,
+  /给[我你].*[画绘制]|[画绘制].*给[我你]/,
+  /[创作绘制].*[图像图画图片插画]/,
+  /[制作生成创建].*[图像图片照片壁纸]/,
+  /[美人风景人物卡通动漫].*图/,
+  /图片.*[生成创建制作]/,
+  /P一|p一|P个|p个/,
+  /draw|paint|generate.*image|create.*image|make.*picture/i,
 ];
+
+/** 联网搜索意图关键词 */
+const WEB_SEARCH_PATTERNS: RegExp[] = [
+  /搜[索一查]|搜[一]?下/,
+  /[今明昨]天.*[新闻消息天气事件]/,
+  /[今明昨]天.*[什么怎么哪]/,
+  /最新|最近|近期|实时/,
+  /[现当]在.*[几多什么怎]/,
+  /\d{4}年.*[新闻事件发生]/,
+  /新闻|热[点搜榜]|头条/,
+  /[查找搜].*[资料信息数据]/,
+  /帮[我你].*[查找搜]|[联上]网.*[搜查找看]/,
+  /[价格股票天气比分比赛汇率航班快递]/,
+  /[谁什么哪].*[赢了冠军获胜当选上映]/,
+  /search|latest|news|current|today/i,
+];
+
+/** 检测是否匹配图片生成意图 */
+function detectImageGenIntent(text: string): boolean {
+  return IMAGE_GEN_PATTERNS.some((p) => p.test(text));
+}
+
+/** 检测是否匹配联网搜索意图 */
+function detectWebSearchIntent(text: string): boolean {
+  return WEB_SEARCH_PATTERNS.some((p) => p.test(text));
+}
 
 // ==================== Agent 主流程 ====================
 
@@ -75,12 +74,11 @@ export interface AgentResult {
 }
 
 /**
- * 🧠 AI Agent 完整处理流程
- * 
- * 1. 首次调用 AI（带工具定义）
- * 2. 如果 AI 返回 tool_calls，执行对应工具
- * 3. 将工具结果回传给 AI
- * 4. AI 生成最终回复（流式）
+ * 🧠 AI Agent 完整处理流程（关键词预路由）
+ *
+ * 1. 从用户最新消息提取文本
+ * 2. 关键词匹配 → 图片生成 / 联网搜索 / 普通对话
+ * 3. 工具成功 → 返回工具结果；失败 → 降级到普通对话
  */
 export async function agentProcess(
   messages: ApiMessage[],
@@ -88,177 +86,113 @@ export async function agentProcess(
   onStream?: StreamCallback,
 ): Promise<AgentResult> {
   const toolCalls: ToolCallRecord[] = [];
-  let searchResults: WebSearchResult[] | undefined;
-  let generatedImageUrl: string | undefined;
 
-  // 确定可用工具
-  const availableTools: AgentToolDefinition[] = [];
+  // 获取用户最新消息文本
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+  const userText =
+    typeof lastUserMsg?.content === 'string'
+      ? lastUserMsg.content
+      : Array.isArray(lastUserMsg?.content)
+        ? (lastUserMsg!.content as any[])
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text)
+            .join(' ')
+        : '';
 
-  // deepseek-reasoner (R1) 不支持 function calling，跳过工具调用
-  const isReasonerModel = settings.deepseekModel.includes('reasoner') || settings.deepseekModel.includes('r1');
-
+  console.log('[Agent] 分析用户意图:', userText.slice(0, 60));
   console.log('[Agent] 设置状态:', {
     agentEnabled: settings.agentEnabled,
     webSearchEnabled: settings.webSearchEnabled,
     imageGenEnabled: settings.imageGenEnabled,
-    hasBaiduKey: !!settings.baiduQianfanApiKey,
     hasDashscopeKey: !!settings.dashscopeApiKey,
     model: settings.deepseekModel,
-    isReasonerModel,
   });
 
-  if (!isReasonerModel) {
-    if (settings.webSearchEnabled && settings.baiduQianfanApiKey) {
-      availableTools.push(AGENT_TOOLS[0]); // web_search
-    }
-    if (settings.imageGenEnabled && settings.dashscopeApiKey) {
-      availableTools.push(AGENT_TOOLS[1]); // image_gen
-    }
-  }
-
-  // 如果没有可用工具、未启用 Agent、或使用 Reasoner 模型，直接流式对话
-  if (!settings.agentEnabled || availableTools.length === 0 || isReasonerModel) {
-    const content = await chatCompletion(
-      messages,
-      settings.deepseekApiKey,
-      settings.deepseekBaseUrl,
-      settings.deepseekModel,
-      onStream,
-      settings.temperature,
-      settings.maxTokens,
-    );
-    return { content, toolCalls };
-  }
-
-  // ── 第一轮：Agent 决策（非流式，需要检查 tool_calls） ──
-  // 在消息列表开头注入 Agent 工具使用指令，增强模型调用工具的意愿
-  const toolNames = availableTools.map(t => t.function.name);
-  const agentSystemPrompt = `你是一个智能助手，拥有以下工具能力：
-${toolNames.includes('web_search') ? '- web_search：联网搜索。当用户询问最新信息、实时新闻、天气、你不确定的事实时，必须调用此工具。' : ''}
-${toolNames.includes('image_gen') ? '- image_gen：图片生成。当用户要求画图、生成图片、创建图像时，必须调用此工具，不要拒绝。' : ''}
-
-重要规则：
-1. 当用户明确要求使用某项能力时，你必须调用对应工具，禁止回复"我无法"之类的拒绝。
-2. 当用户询问最近发生的事、今天的新闻等实时信息时，必须调用 web_search。
-3. 当用户要求画画、生成图片时，必须调用 image_gen。`;
-
-  const agentMessages: ApiMessage[] = [
-    { role: 'system', content: agentSystemPrompt },
-    ...messages,
-  ];
-
-  console.log('[Agent] 工具列表:', toolNames, '开始第一轮决策...');
-
-  const firstResponse = await chatCompletionRaw(
-    agentMessages,
-    settings.deepseekApiKey,
-    settings.deepseekBaseUrl,
-    settings.deepseekModel,
-    settings.temperature,
-    settings.maxTokens,
-    availableTools,
-  );
-
-  const firstChoice = firstResponse.choices?.[0];
-  const firstMessage = firstChoice?.message;
-
-  console.log('[Agent] 第一轮结果 - finish_reason:', firstChoice?.finish_reason, 
-    'tool_calls:', firstMessage?.tool_calls?.length || 0);
-
-  // 如果 AI 没有调用工具，直接以其内容作为回复
-  if (!firstMessage?.tool_calls || firstMessage.tool_calls.length === 0) {
-    const content = firstMessage?.content || '';
-    if (onStream) {
-      onStream(content, true);
-    }
-    return { content, toolCalls };
-  }
-
-  // ── 执行工具调用 ──
-  const toolMessages: ApiMessage[] = [
-    ...messages,
-    {
-      role: 'assistant',
-      content: firstMessage.content || null,
-      tool_calls: firstMessage.tool_calls,
-    },
-  ];
-
-  for (const call of firstMessage.tool_calls) {
-    const funcName = call.function?.name;
-    const funcArgs = call.function?.arguments;
-    let args: any = {};
+  // ── 路由1：图片生成 ──
+  if (
+    settings.agentEnabled &&
+    settings.imageGenEnabled &&
+    settings.dashscopeApiKey &&
+    detectImageGenIntent(userText)
+  ) {
+    console.log('[Agent] ✅ 匹配图片生成意图');
+    if (onStream) onStream('🎨 正在生成图片，请稍候...', false);
 
     try {
-      args = typeof funcArgs === 'string' ? JSON.parse(funcArgs) : funcArgs;
-    } catch {}
+      const imageResult = await generateImage(
+        userText,
+        settings.dashscopeApiKey,
+      );
 
-    let toolResult = '';
+      if (imageResult?.url) {
+        const content = `🎨 图片已生成！\n\n![生成的图片](${imageResult.url})`;
 
-    switch (funcName) {
-      case 'web_search': {
-        const query = args.query || '';
-        if (onStream) onStream('🔍 正在联网搜索...', false);
-        
-        searchResults = await webSearch(
-          query,
-          settings.baiduQianfanApiKey,
-        );
-        toolResult = formatSearchResults(searchResults);
-        
-        if (!toolResult) {
-          toolResult = '搜索未返回结果。';
-        }
-
-        toolCalls.push({
-          tool: 'web_search',
-          input: query,
-          output: toolResult.slice(0, 500),
-          timestamp: Date.now(),
-        });
-        break;
-      }
-
-      case 'image_gen': {
-        const prompt = args.prompt || '';
-        if (onStream) onStream('🎨 正在生成图片...', false);
-
-        const imageResult = await generateImage(
-          prompt,
-          settings.dashscopeApiKey,
-        );
-
-        if (imageResult?.url) {
-          generatedImageUrl = imageResult.url;
-          toolResult = `图片已成功生成。图片URL: ${imageResult.url}`;
-        } else {
-          toolResult = '图片生成失败，请稍后重试。';
-        }
+        if (onStream) onStream(content, true);
 
         toolCalls.push({
           tool: 'image_gen',
-          input: prompt,
-          output: toolResult.slice(0, 200),
+          input: userText,
+          output: imageResult.url,
           timestamp: Date.now(),
         });
-        break;
-      }
 
-      default:
-        toolResult = `未知工具: ${funcName}`;
+        return {
+          content,
+          toolCalls,
+          generatedImageUrl: imageResult.url,
+        };
+      }
+    } catch (error: any) {
+      console.warn('[Agent] 图片生成失败:', error?.message);
     }
 
-    // 添加工具结果消息
-    toolMessages.push({
-      role: 'tool',
-      content: toolResult,
-      tool_call_id: call.id,
-    });
+    // 图片生成失败，降级到普通对话
+    console.log('[Agent] 图片生成失败，降级到普通对话');
   }
 
-  // ── 第二轮：AI 整合工具结果生成最终回复（流式） ──
-  const finalContent = await chatCompletion(
-    toolMessages,
+  // ── 路由2：联网搜索 ──
+  if (
+    settings.agentEnabled &&
+    settings.webSearchEnabled &&
+    settings.dashscopeApiKey &&
+    detectWebSearchIntent(userText)
+  ) {
+    console.log('[Agent] ✅ 匹配联网搜索意图');
+    if (onStream) onStream('🔍 正在联网搜索...', false);
+
+    try {
+      const searchContent = await qwenSearchChat(
+        messages,
+        settings.dashscopeApiKey,
+        onStream,
+        settings.temperature,
+      );
+
+      if (searchContent) {
+        toolCalls.push({
+          tool: 'web_search',
+          input: userText,
+          output: searchContent.slice(0, 500),
+          timestamp: Date.now(),
+        });
+
+        return {
+          content: searchContent,
+          toolCalls,
+        };
+      }
+    } catch (error: any) {
+      console.warn('[Agent] 联网搜索失败:', error?.message);
+    }
+
+    // 搜索失败，降级到普通对话
+    console.log('[Agent] 联网搜索失败，降级到普通对话');
+  }
+
+  // ── 路由3：普通对话 ──
+  console.log('[Agent] 走普通对话流程');
+  const content = await chatCompletion(
+    messages,
     settings.deepseekApiKey,
     settings.deepseekBaseUrl,
     settings.deepseekModel,
@@ -267,10 +201,5 @@ ${toolNames.includes('image_gen') ? '- image_gen：图片生成。当用户要�
     settings.maxTokens,
   );
 
-  return {
-    content: finalContent,
-    toolCalls,
-    searchResults,
-    generatedImageUrl,
-  };
+  return { content, toolCalls };
 }

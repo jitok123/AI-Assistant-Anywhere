@@ -403,35 +403,20 @@ export default function SettingsScreen() {
 
         {/* ==================== 🧠 AI Agent 设置 ==================== */}
         <Section title="AI Agent (智能体)" icon="🧠">
-          <Row label="启用 Agent 模式" hint="AI 自动判断是否联网搜索/生成图片">
+          <Row label="启用 Agent 模式" hint="AI 自动识别意图并调用搜索/绘图">
             <Switch
               value={settings.agentEnabled}
               onValueChange={(v) => updateSettings({ agentEnabled: v })}
               trackColor={{ true: colors.primary }}
             />
           </Row>
-          <Row label="启用联网搜索" hint="允许 AI 搜索互联网信息">
+          <Row label="启用联网搜索" hint="使用阿里云Qwen联网搜索（需配置DashScope Key）">
             <Switch
               value={settings.webSearchEnabled}
               onValueChange={(v) => updateSettings({ webSearchEnabled: v })}
               trackColor={{ true: colors.primary }}
             />
           </Row>
-          {settings.webSearchEnabled && (
-            <Row label="百度千帆 API Key" hint="联网搜索密钥">
-              <TextInput
-                style={[
-                  styles.input,
-                  { color: colors.text, borderColor: colors.border },
-                ]}
-                value={settings.baiduQianfanApiKey}
-                onChangeText={(v) => updateSettings({ baiduQianfanApiKey: v })}
-                placeholder="bce-v3/ALTAK-..."
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="none"
-              />
-            </Row>
-          )}
           <Row label="启用图片生成" hint="允许 AI 生成图片" isLast>
             <Switch
               value={settings.imageGenEnabled}
