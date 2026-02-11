@@ -6,6 +6,10 @@
  *
  * API: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
  *      添加 enable_search: true 参数
+ *
+ * 两种用法：
+ *   1. searchAndExtract — 非流式，提取搜索事实（供 DeepSeek 使用）
+ *   2. qwenSearchChat  — 直接流式回复（备用）
  */
 import type { WebSearchResult, ApiMessage, StreamCallback } from '../types';
 
@@ -13,12 +17,67 @@ import type { WebSearchResult, ApiMessage, StreamCallback } from '../types';
 const DASHSCOPE_CHAT_URL =
   'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
 
-/** 用于联网搜索的 Qwen 模型（快速、支持联网搜索） */
+/** 联网搜索使用的 Qwen 模型 */
 const SEARCH_MODEL = 'qwen-plus';
 
 /**
- * 🔍 使用 Qwen + enable_search 进行联网搜索并生成回复
- * 支持流式输出，直接返回完整内容
+ * 🔍 联网搜索并提取事实信息（非流式）
+ *
+ * 用于 Agent 流程：
+ *   1. 调用 Qwen + enable_search 获取搜索增强回复
+ *   2. 返回纯文本事实内容
+ *   3. 由 Agent 注入到 DeepSeek 上下文中
+ */
+export async function searchAndExtract(
+  query: string,
+  apiKey: string,
+): Promise<string> {
+  if (!apiKey || !query.trim()) return '';
+
+  console.log('[WebSearch] searchAndExtract, 查询:', query.slice(0, 60));
+
+  try {
+    const response = await fetch(DASHSCOPE_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: SEARCH_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content:
+              '你是一个联网搜索助手。请根据搜索结果，整理出与用户问题相关的关键事实信息。'
+              + '输出要求：简洁、客观、有条理，列出关键事实要点和来源。不需要完整的回答，只需提供事实素材。',
+          },
+          { role: 'user', content: query.trim() },
+        ],
+        stream: false,
+        enable_search: true,
+        temperature: 0.3, // 低温度以获取更准确的事实
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[WebSearch] 搜索失败 (${response.status}):`, errorText);
+      return '';
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    console.log('[WebSearch] ✅ 事实提取完成, 长度:', content.length);
+    return content;
+  } catch (error: any) {
+    console.error('[WebSearch] searchAndExtract 错误:', error?.message || error);
+    return '';
+  }
+}
+
+/**
+ * 直接使用 Qwen + enable_search 流式回复（备用方案）
  */
 export async function qwenSearchChat(
   messages: ApiMessage[],
@@ -26,12 +85,7 @@ export async function qwenSearchChat(
   onStream?: StreamCallback,
   temperature: number = 0.7,
 ): Promise<string> {
-  if (!apiKey) {
-    console.warn('[WebSearch] 缺少 DashScope API Key');
-    return '';
-  }
-
-  console.log('[WebSearch] 开始联网搜索, 模型:', SEARCH_MODEL);
+  if (!apiKey) return '';
 
   const body: any = {
     model: SEARCH_MODEL,
@@ -41,40 +95,31 @@ export async function qwenSearchChat(
     enable_search: true,
   };
 
-  if (onStream) {
-    return streamSearchWithXHR(DASHSCOPE_CHAT_URL, apiKey, body, onStream);
-  }
-
-  // 非流式
-  try {
-    const response = await fetch(DASHSCOPE_CHAT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[WebSearch] 请求失败 (${response.status}):`, errorText);
+  if (!onStream) {
+    // 非流式
+    try {
+      const response = await fetch(DASHSCOPE_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return '';
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || '';
+    } catch {
       return '';
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    console.log('[WebSearch] ✅ 搜索完成, 内容长度:', content.length);
-    return content;
-  } catch (error: any) {
-    console.error('[WebSearch] 错误:', error?.message || error);
-    return '';
   }
+
+  // 流式 (XHR)
+  return streamSearchWithXHR(DASHSCOPE_CHAT_URL, apiKey, body, onStream);
 }
 
 /**
- * XHR 流式联网搜索（React Native 兼容）
- * 使用 XMLHttpRequest 替代 fetch 实现流式传输
+ * XHR 流式搜索（React Native 兼容）
  */
 function streamSearchWithXHR(
   url: string,
@@ -93,7 +138,6 @@ function streamSearchWithXHR(
     let lastIndex = 0;
     let sseBuffer = '';
 
-    /** 增量解析 SSE 数据 */
     const processNewData = () => {
       const newText = xhr.responseText.substring(lastIndex);
       lastIndex = xhr.responseText.length;
@@ -116,83 +160,46 @@ function streamSearchWithXHR(
             fullContent += delta.content;
             onStream(fullContent, false);
           }
-        } catch {
-          // 忽略不完整的 JSON 数据块
-        }
+        } catch {}
       }
     };
 
     xhr.onreadystatechange = () => {
       if (xhr.readyState >= 3 && xhr.status >= 200 && xhr.status < 300) {
-        try {
-          processNewData();
-        } catch {}
+        try { processNewData(); } catch {}
       }
     };
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          processNewData();
-        } catch {}
-
-        // 如果流式没有拿到内容，尝试作为普通 JSON 解析
+        try { processNewData(); } catch {}
         if (!fullContent && xhr.responseText) {
           try {
             const jsonData = JSON.parse(xhr.responseText);
             fullContent = jsonData.choices?.[0]?.message?.content || '';
-          } catch {
-            // 尝试从 SSE 文本中完整解析
-            const allLines = xhr.responseText.split('\n');
-            for (const line of allLines) {
-              const trimmed = line.trim();
-              if (!trimmed || !trimmed.startsWith('data: ')) continue;
-              const d = trimmed.slice(6);
-              if (d === '[DONE]') continue;
-              try {
-                const p = JSON.parse(d);
-                const c = p.choices?.[0]?.delta?.content;
-                if (c) fullContent += c;
-              } catch {}
-            }
-          }
+          } catch {}
         }
-
-        console.log('[WebSearch] ✅ 流式搜索完成, 内容长度:', fullContent.length);
         onStream(fullContent, true);
         resolve(fullContent);
       } else {
-        const errMsg = xhr.responseText?.substring(0, 300) || '未知错误';
-        reject(new Error(`联网搜索请求失败 (${xhr.status}): ${errMsg}`));
+        reject(new Error(`联网搜索请求失败 (${xhr.status})`));
       }
     };
 
     xhr.onerror = () => reject(new Error('联网搜索网络连接失败'));
-    xhr.timeout = 60000;
-    xhr.ontimeout = () => reject(new Error('联网搜索请求超时（60秒）'));
+    xhr.timeout = 30000;
+    xhr.ontimeout = () => reject(new Error('联网搜索超时'));
     xhr.send(JSON.stringify(body));
   });
 }
 
-// ==================== 旧接口兼容 ====================
+// ==================== 向后兼容 ====================
 
-/**
- * 格式化搜索结果为文本（保留向后兼容）
- */
 export function formatSearchResults(results: WebSearchResult[]): string {
   if (results.length === 0) return '';
-  return results
-    .map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\n来源: ${r.url}`)
-    .join('\n\n');
+  return results.map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\n来源: ${r.url}`).join('\n\n');
 }
 
-/**
- * @deprecated 旧版搜索接口，已替换为 qwenSearchChat
- */
-export async function webSearch(
-  query: string,
-  apiKey: string,
-): Promise<WebSearchResult[]> {
-  console.warn('[WebSearch] webSearch() 已弃用，请使用 qwenSearchChat()');
+export async function webSearch(query: string, apiKey: string): Promise<WebSearchResult[]> {
   return [];
 }

@@ -11,6 +11,12 @@ interface Props {
   message: Message;
 }
 
+/** 移除 Markdown 图片语法，避免 react-native-markdown-display 的 key prop 崩溃 */
+function stripMarkdownImages(text: string): string {
+  // 移除 ![alt](url) 格式
+  return text.replace(/!\[[^\]]*\]\([^)]+\)/g, '').trim();
+}
+
 export function MessageBubble({ message }: Props) {
   const colors = useTheme();
   const isUser = message.role === 'user';
@@ -121,7 +127,7 @@ export function MessageBubble({ message }: Props) {
               </Text>
             ) : (
               <Markdown style={mdStyles as any}>
-                {message.content}
+                {stripMarkdownImages(message.content)}
               </Markdown>
             )
           ) : (

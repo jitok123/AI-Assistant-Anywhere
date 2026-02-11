@@ -260,6 +260,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const abortController = new AbortController();
     set({ _abortController: abortController } as any);
 
+    // ⏰ 安全超时：120s 后强制清除 loading（防止永久卡住）
+    const safetyTimeout = setTimeout(() => {
+      if (get().isLoading) {
+        console.warn('[Store] 安全超时触发，强制清除 loading');
+        set({ isLoading: false, streamingContent: '' });
+      }
+    }, 120000);
+
     try {
       // ── 步骤1：RAG 专员检索（多层记忆） ──
       let ragContext = '';
@@ -310,37 +318,39 @@ export const useAppStore = create<AppState>((set, get) => ({
       // ── 步骤3：AI Agent 处理（含工具调用决策） ──
       // 图片消息使用 DashScope 视觉模型直接处理（绕过 Agent）
       let agentResult;
+      // 流式回调：更新消息内容，done=true 时立即清除 loading 状态
+      const streamCallback = (chunk: string, done: boolean) => {
+        set({ streamingContent: chunk });
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === aiMsg.id ? { ...m, content: chunk } : m
+          ),
+        }));
+        // ⚡ 关键修复：流完成信号到达时立即清除 loading
+        //    防止 XHR promise 未正确 resolve 导致 isLoading 卡住
+        if (done && chunk) {
+          console.log('[Store] 流式完成信号到达，清除 loading');
+          set({ isLoading: false, streamingContent: '' });
+        }
+      };
+
       if (imageUri && settings.dashscopeApiKey) {
         const visionContent = await chatCompletion(
           apiMessages,
           settings.dashscopeApiKey,
           'https://dashscope.aliyuncs.com/compatible-mode/v1',
           'qwen-vl-max',
-          (chunk: string, done: boolean) => {
-            set({ streamingContent: chunk });
-            set((s) => ({
-              messages: s.messages.map((m) =>
-                m.id === aiMsg.id ? { ...m, content: chunk } : m
-              ),
-            }));
-          },
+          streamCallback,
           settings.temperature,
           settings.maxTokens,
         );
         agentResult = { content: visionContent, toolCalls: [] };
       } else {
         agentResult = await agentProcess(
-        apiMessages,
-        settings,
-        (chunk: string, done: boolean) => {
-          set({ streamingContent: chunk });
-          set((s) => ({
-            messages: s.messages.map((m) =>
-              m.id === aiMsg.id ? { ...m, content: chunk } : m
-            ),
-          }));
-        },
-      );
+          apiMessages,
+          settings,
+          streamCallback,
+        );
       }
 
       // ── 步骤4：保存结果 ──
@@ -359,7 +369,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         streamingContent: '',
       }));
 
-      // 自动生成标题
+      // 清除流式状态（确保 UI 更新）
+      set({ isLoading: false, streamingContent: '' });
+
+      // 自动生成标题（完全后台，不影响UI）
       const currentMessages = get().messages;
       if (currentMessages.filter((m) => m.role === 'user').length === 1) {
         generateTitle(
@@ -368,7 +381,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           settings.deepseekBaseUrl,
           settings.deepseekModel
         ).then((title) => {
-          get().renameConversation(convId!, title);
+          get().renameConversation(convId!, title).catch(() => {});
+        }).catch((err) => {
+          console.warn('[Store] 生成标题失败:', err?.message);
         });
       }
 
@@ -394,7 +409,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.warn('[RAG] 后处理异常:', ragErr);
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') return;
+      console.warn('[Store] sendMessage 错误:', error?.message);
+      if (error.name === 'AbortError') {
+        set({ isLoading: false, streamingContent: '' });
+        return;
+      }
 
       // 更友好的错误信息
       let errorContent = '抱歉，发生了错误。';
@@ -421,7 +440,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         streamingContent: '',
       }));
     } finally {
-      set({ _abortController: null, isLoading: false } as any);
+      // 🔒 终极保险：无论如何都清除 loading 状态
+      clearTimeout(safetyTimeout);
+      console.log('[Store] finally 块执行，清除 loading');
+      set({ _abortController: null, isLoading: false, streamingContent: '' } as any);
     }
   },
 
