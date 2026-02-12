@@ -226,11 +226,11 @@ npm run build:aab
 ## 项目架构文档
 
 - [architecture_overview.md](架构文档/log7_architecture_overview.md)
-- [log8_message_pipeline.md](架构文档/log8_message_pipeline.md)
-- [log9_agent_routing.md](架构文档/log9_agent_routing.md)
-- [log10_rag_architecture.md](架构文档/log10_rag_architecture.md)
-- [log11_streaming_state.md](架构文档/log11_streaming_state.md)
-- [log12_dataflow_errors.md](架构文档/log12_dataflow_errors.md)
+- [message_pipeline.md](架构文档/log8_message_pipeline.md)
+- [agent_routing.md](架构文档/log9_agent_routing.md)
+- [rag_architecture.md](架构文档/log10_rag_architecture.md)
+- [streaming_state.md](架构文档/log11_streaming_state.md)
+- [dataflow_errors.md](架构文档/log12_dataflow_errors.md)
 ## 许可证
 
 MIT License
