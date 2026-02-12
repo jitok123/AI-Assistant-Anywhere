@@ -86,6 +86,23 @@ export function MessageBubble({ message }: Props) {
           />
         )}
 
+        {/* 文件消息 */}
+        {message.fileName && (
+          <View style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.fileIcon, { color: colors.primary }]}>📎</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>
+                {message.fileName}
+              </Text>
+              {!!message.fileMimeType && (
+                <Text style={[styles.fileMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {message.fileMimeType}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* 思考过程/工具调用展示 */}
         {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
           <View style={styles.toolsContainer}>
@@ -141,6 +158,7 @@ export function MessageBubble({ message }: Props) {
         <Text style={[styles.meta, { color: colors.textTertiary }, isUser && styles.userMeta]}>
           {message.type === 'voice' ? '[语音] ' : ''}
           {message.type === 'image' ? '[图片] ' : ''}
+          {message.type === 'file' ? '[文件] ' : ''}
           {new Date(message.createdAt).toLocaleTimeString('zh-CN', {
             hour: '2-digit',
             minute: '2-digit',
@@ -154,8 +172,8 @@ export function MessageBubble({ message }: Props) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     alignItems: 'flex-start',
   },
   userContainer: {
@@ -176,18 +194,18 @@ const styles = StyleSheet.create({
   contentWrap: {
     flex: 1,
     marginLeft: 8,
-    marginRight: 40,
+    marginRight: 14,
   },
   userContentWrap: {
-    marginLeft: 40,
+    marginLeft: 14,
     marginRight: 8,
     alignItems: 'flex-end',
   },
   bubble: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
-    maxWidth: '100%',
+    paddingVertical: 11,
+    borderRadius: 18,
+    maxWidth: '96%',
   },
   userBubble: {
     borderBottomRightRadius: 4,
@@ -201,6 +219,28 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 12,
     marginBottom: 6,
+  },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+    maxWidth: 260,
+  },
+  fileIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  fileName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  fileMeta: {
+    fontSize: 11,
+    marginTop: 2,
   },
   meta: {
     fontSize: 11,

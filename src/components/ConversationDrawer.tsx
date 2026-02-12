@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../hooks/useTheme';
@@ -60,6 +61,25 @@ export function ConversationDrawer({ onClose }: Props) {
     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   };
 
+  const formatGroup = (ts: number) => {
+    const d = new Date(ts);
+    const now = new Date();
+    const delta = now.getTime() - d.getTime();
+    if (d.toDateString() === now.toDateString()) return '今天';
+    if (delta <= 7 * 24 * 60 * 60 * 1000) return '7天内';
+    return '更早';
+  };
+
+  const groupedData = conversations.map((item, index) => {
+    const current = formatGroup(item.updatedAt);
+    const prev = index > 0 ? formatGroup(conversations[index - 1].updatedAt) : '';
+    return {
+      ...item,
+      showGroupHeader: current !== prev,
+      groupLabel: current,
+    };
+  });
+
   return (
     <View style={[styles.container, { backgroundColor: colors.sidebarBg }]}>
       {/* 头部 */}
@@ -80,35 +100,42 @@ export function ConversationDrawer({ onClose }: Props) {
 
       {/* 对话列表 */}
       <FlatList
-        data={conversations}
+        data={groupedData}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const isActive = item.id === currentConversationId;
           return (
-            <TouchableOpacity
-              style={[
-                styles.item,
-                {
-                  backgroundColor: isActive ? colors.primaryLight : 'transparent',
-                  borderBottomColor: colors.border,
-                },
-              ]}
-              onPress={() => handleSelect(item.id)}
-              onLongPress={() => handleDelete(item.id, item.title)}
-            >
-              <Text
+            <View>
+              {item.showGroupHeader && (
+                <Text style={[styles.groupHeader, { color: colors.textTertiary }]}>
+                  {item.groupLabel}
+                </Text>
+              )}
+              <Pressable
                 style={[
-                  styles.itemTitle,
-                  { color: isActive ? colors.primary : colors.text },
+                  styles.item,
+                  {
+                    backgroundColor: isActive ? colors.primaryLight : colors.surface,
+                    borderColor: isActive ? colors.primary : colors.border,
+                  },
                 ]}
-                numberOfLines={1}
+                onPress={() => handleSelect(item.id)}
+                onLongPress={() => handleDelete(item.id, item.title)}
               >
-                {item.title}
-              </Text>
-              <Text style={[styles.itemDate, { color: colors.textTertiary }]}>
-                {formatDate(item.updatedAt)}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.itemTitle,
+                    { color: isActive ? colors.primary : colors.text },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.title}
+                </Text>
+                <Text style={[styles.itemDate, { color: colors.textSecondary }]}>
+                  {formatDate(item.updatedAt)}
+                </Text>
+              </Pressable>
+            </View>
           );
         }}
         ListEmptyComponent={
@@ -146,7 +173,7 @@ export function ConversationDrawer({ onClose }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: 300,
+    width: 320,
   },
   header: {
     flexDirection: 'row',
@@ -154,7 +181,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 12,
+    paddingBottom: 14,
     borderBottomWidth: 0.5,
   },
   title: {
@@ -165,9 +192,10 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   newBtn: {
-    margin: 12,
-    paddingVertical: 12,
-    borderRadius: 10,
+    marginHorizontal: 14,
+    marginVertical: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: 'center',
   },
   newBtnText: {
@@ -176,17 +204,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   item: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
+    marginHorizontal: 10,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  groupHeader: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 6,
+    marginLeft: 14,
   },
   itemTitle: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
   },
   itemDate: {
-    fontSize: 11,
-    marginTop: 3,
+    fontSize: 12,
+    marginTop: 4,
   },
   empty: {
     padding: 40,
@@ -195,8 +233,8 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     borderTopWidth: 0.5,
-    paddingVertical: 12,
-    paddingBottom: 30,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   footerBtn: {
     flex: 1,

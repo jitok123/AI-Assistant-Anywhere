@@ -43,6 +43,9 @@ export async function initDatabase(): Promise<void> {
       content TEXT NOT NULL,
       type TEXT DEFAULT 'text',
       image_uri TEXT,
+      file_uri TEXT,
+      file_name TEXT,
+      file_mime_type TEXT,
       tool_calls TEXT,
       search_results TEXT,
       generated_image_url TEXT,
@@ -91,6 +94,21 @@ export async function initDatabase(): Promise<void> {
   try {
     await database.execAsync(`
       ALTER TABLE messages ADD COLUMN generated_image_url TEXT;
+    `);
+  } catch {}
+  try {
+    await database.execAsync(`
+      ALTER TABLE messages ADD COLUMN file_uri TEXT;
+    `);
+  } catch {}
+  try {
+    await database.execAsync(`
+      ALTER TABLE messages ADD COLUMN file_name TEXT;
+    `);
+  } catch {}
+  try {
+    await database.execAsync(`
+      ALTER TABLE messages ADD COLUMN file_mime_type TEXT;
     `);
   } catch {}
 }
@@ -159,7 +177,7 @@ export async function deleteConversation(id: string): Promise<void> {
 export async function addMessage(message: Message): Promise<void> {
   const database = getDatabase();
   await database.runAsync(
-    'INSERT INTO messages (id, conversation_id, role, content, type, image_uri, tool_calls, search_results, generated_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO messages (id, conversation_id, role, content, type, image_uri, file_uri, file_name, file_mime_type, tool_calls, search_results, generated_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       message.id,
       message.conversationId,
@@ -167,6 +185,9 @@ export async function addMessage(message: Message): Promise<void> {
       message.content,
       message.type,
       message.imageUri || null,
+      message.fileUri || null,
+      message.fileName || null,
+      message.fileMimeType || null,
       message.toolCalls ? JSON.stringify(message.toolCalls) : null,
       message.searchResults ? JSON.stringify(message.searchResults) : null,
       message.generatedImageUrl || null,
@@ -204,6 +225,9 @@ export async function getMessages(
     content: row.content,
     type: row.type || 'text',
     imageUri: row.image_uri,
+    fileUri: row.file_uri || undefined,
+    fileName: row.file_name || undefined,
+    fileMimeType: row.file_mime_type || undefined,
     toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
     searchResults: row.search_results ? JSON.parse(row.search_results) : undefined,
     generatedImageUrl: row.generated_image_url || undefined,
@@ -229,6 +253,9 @@ export async function getRecentMessages(
       content: row.content,
       type: row.type || 'text',
       imageUri: row.image_uri,
+      fileUri: row.file_uri || undefined,
+      fileName: row.file_name || undefined,
+      fileMimeType: row.file_mime_type || undefined,
       toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
       searchResults: row.search_results ? JSON.parse(row.search_results) : undefined,
       generatedImageUrl: row.generated_image_url || undefined,
@@ -459,6 +486,9 @@ export async function exportAllData(): Promise<{
     content: row.content,
     type: row.type || 'text',
     imageUri: row.image_uri,
+    fileUri: row.file_uri || undefined,
+    fileName: row.file_name || undefined,
+    fileMimeType: row.file_mime_type || undefined,
     toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
     searchResults: row.search_results ? JSON.parse(row.search_results) : undefined,
     generatedImageUrl: row.generated_image_url || undefined,
@@ -498,10 +528,13 @@ export async function importAllData(data: {
 
   for (const msg of data.messages) {
     await database.runAsync(
-      'INSERT OR REPLACE INTO messages (id, conversation_id, role, content, type, image_uri, tool_calls, search_results, generated_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR REPLACE INTO messages (id, conversation_id, role, content, type, image_uri, file_uri, file_name, file_mime_type, tool_calls, search_results, generated_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         msg.id, msg.conversationId, msg.role, msg.content, msg.type,
         msg.imageUri || null,
+        msg.fileUri || null,
+        msg.fileName || null,
+        msg.fileMimeType || null,
         msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
         msg.searchResults ? JSON.stringify(msg.searchResults) : null,
         msg.generatedImageUrl || null,

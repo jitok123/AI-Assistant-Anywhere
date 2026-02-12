@@ -14,8 +14,11 @@ export interface Message {
   conversationId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type: 'text' | 'voice' | 'image';
+  type: 'text' | 'voice' | 'image' | 'file';
   imageUri?: string;
+  fileUri?: string;
+  fileName?: string;
+  fileMimeType?: string;
   /** Agent 工具调用记录 */
   toolCalls?: ToolCallRecord[];
   /** 搜索结果（联网搜索时） */

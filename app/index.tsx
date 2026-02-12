@@ -9,10 +9,10 @@ import {
   TouchableOpacity,
   Text,
   Modal,
-  Dimensions,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -28,6 +28,20 @@ export default function ChatScreen() {
   const router = useRouter();
   const flatListRef = useRef<FlatList>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        if (drawerVisible) return false;
+        return gestureState.moveX < 28 && gestureState.dx > 14 && Math.abs(gestureState.dy) < 18;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (!drawerVisible && gestureState.dx > 58) {
+          setDrawerVisible(true);
+        }
+      },
+    }),
+  ).current;
 
   const {
     messages,
@@ -64,6 +78,7 @@ export default function ChatScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        {...panResponder.panHandlers}
       >
       {/* 顶部导航 */}
       <View style={[styles.header, { backgroundColor: colors.headerBg, borderBottomColor: colors.border }]}>
@@ -110,6 +125,18 @@ export default function ChatScreen() {
             多层记忆 · 联网搜索 · 图片生成 · 图片理解
           </Text>
 
+          <View style={styles.capabilityRow}>
+            <View style={[styles.capabilityChip, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+              <Text style={[styles.capabilityText, { color: colors.textSecondary }]}>⚡ 智能路由</Text>
+            </View>
+            <View style={[styles.capabilityChip, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+              <Text style={[styles.capabilityText, { color: colors.textSecondary }]}>🔎 实时检索</Text>
+            </View>
+            <View style={[styles.capabilityChip, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+              <Text style={[styles.capabilityText, { color: colors.textSecondary }]}>📎 图文附件</Text>
+            </View>
+          </View>
+
           {!settings.deepseekApiKey && (
             <TouchableOpacity
               onPress={() => router.push('/settings')}
@@ -122,6 +149,7 @@ export default function ChatScreen() {
         </View>
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
@@ -150,7 +178,7 @@ export default function ChatScreen() {
       {/* 对话列表抽屉 */}
       <Modal
         visible={drawerVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setDrawerVisible(false)}
       >
@@ -183,9 +211,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     borderBottomWidth: 0.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   headerBtn: {
     padding: 8,
@@ -237,6 +270,8 @@ const styles = StyleSheet.create({
   },
   messageList: {
     paddingVertical: 12,
+    paddingBottom: 18,
+    paddingHorizontal: 2,
   },
   emptyContainer: {
     flex: 1,
@@ -265,6 +300,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  capabilityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 14,
+    gap: 8,
+  },
+  capabilityChip: {
+    borderWidth: 0.5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  capabilityText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   setupBtn: {
     marginTop: 24,

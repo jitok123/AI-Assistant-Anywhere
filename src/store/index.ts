@@ -68,7 +68,17 @@ interface AppState {
   messages: Message[];
   isLoading: boolean;
   streamingContent: string;
-  sendMessage: (content: string, type?: 'text' | 'voice' | 'image', imageUri?: string) => Promise<void>;
+  sendMessage: (
+    content: string,
+    type?: 'text' | 'voice' | 'image' | 'file',
+    imageUri?: string,
+    fileAttachment?: {
+      uri: string;
+      name: string;
+      mimeType?: string;
+      textContent?: string;
+    },
+  ) => Promise<void>;
   stopGeneration: () => void;
 
   // 聊天模式
@@ -215,7 +225,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   /** 发送消息并获取 AI 回复 */
-  sendMessage: async (content: string, type = 'text', imageUri?: string) => {
+  sendMessage: async (
+    content: string,
+    type: 'text' | 'voice' | 'image' | 'file' = 'text',
+    imageUri?: string,
+    fileAttachment?: {
+      uri: string;
+      name: string;
+      mimeType?: string;
+      textContent?: string;
+    },
+  ) => {
     const state = get();
     const { settings } = state;
 
@@ -234,9 +254,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: Crypto.randomUUID(),
       conversationId: convId,
       role: 'user',
-      content,
+      content: content || (type === 'file' ? `请分析文件：${fileAttachment?.name || '附件'}` : ''),
       type,
       imageUri,
+      fileUri: fileAttachment?.uri,
+      fileName: fileAttachment?.name,
+      fileMimeType: fileAttachment?.mimeType,
       createdAt: Date.now(),
     };
     await addMessage(userMsg);
@@ -311,6 +334,18 @@ export const useAppStore = create<AppState>((set, get) => ({
             { type: 'image_url', image_url: { url: base64 } },
           ],
         });
+      } else if (type === 'file' && fileAttachment) {
+        const fileHeader = [
+          `文件名：${fileAttachment.name}`,
+          fileAttachment.mimeType ? `文件类型：${fileAttachment.mimeType}` : '',
+        ].filter(Boolean).join('\n');
+
+        const fileBody = fileAttachment.textContent
+          ? `\n\n【文件内容节选】\n${fileAttachment.textContent}`
+          : '\n\n【说明】该文件不是纯文本，当前无法直接读取正文。请先根据文件名和用户问题给出可行建议。';
+
+        const mergedText = `${content || `请帮我处理这个文件`}\n\n【附件信息】\n${fileHeader}${fileBody}`;
+        apiMessages.push({ role: 'user', content: mergedText });
       } else {
         apiMessages.push({ role: 'user', content });
       }

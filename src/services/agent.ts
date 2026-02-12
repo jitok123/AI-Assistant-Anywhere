@@ -14,7 +14,8 @@
  *   - 意图检测极严格，避免误触发
  */
 import { chatCompletion } from './deepseek';
-import { searchAndExtract } from './webSearch';
+import { chatCompletionRaw } from './deepseek';
+import { searchAndExtract, qwenSearchChat } from './webSearch';
 import { generateImage } from './imageGen';
 import type {
   ApiMessage,
@@ -23,6 +24,8 @@ import type {
   ToolCallRecord,
   WebSearchResult,
 } from '../types';
+
+type AgentRoute = 'image_gen' | 'web_search' | 'chat';
 
 // ==================== 严格意图检测 ====================
 
@@ -109,6 +112,66 @@ function detectWebSearchIntent(text: string): boolean {
   return PATTERNS.some((p) => p.test(text));
 }
 
+/**
+ * 使用 LLM 进行意图路由决策（优先于关键词规则）
+ * - 仅做路由，不生成最终回答
+ * - 失败时降级到本地规则
+ */
+async function decideRouteWithLLM(
+  userText: string,
+  settings: AppSettings,
+): Promise<AgentRoute | null> {
+  if (!settings.agentEnabled || !settings.deepseekApiKey || !userText.trim()) {
+    return null;
+  }
+
+  try {
+    const classifierMessages: ApiMessage[] = [
+      {
+        role: 'system',
+        content:
+          '你是一个“路由分类器”，只输出 JSON，不要输出任何解释。\n'
+          + '请把用户输入分类到以下 route：\n'
+          + '1) image_gen: 用户明确要你生成/绘制/创建图片或插画\n'
+          + '2) web_search: 用户问题依赖最新事实、实时信息、新闻、价格、天气、比分、近期动态\n'
+          + '3) chat: 其它普通对话\n\n'
+          + '输出格式必须是：{"route":"image_gen|web_search|chat","confidence":0-1}\n'
+          + '不要包含 markdown，不要包含多余文本。',
+      },
+      { role: 'user', content: userText.slice(0, 2000) },
+    ];
+
+    const raw = await chatCompletionRaw(
+      classifierMessages,
+      settings.deepseekApiKey,
+      settings.deepseekBaseUrl,
+      settings.deepseekModel,
+      0,
+      120,
+    );
+
+    const out = raw?.choices?.[0]?.message?.content || '';
+    const jsonText = typeof out === 'string'
+      ? (out.match(/\{[\s\S]*\}/)?.[0] || out)
+      : '';
+
+    const parsed = JSON.parse(jsonText);
+    const route = parsed?.route as AgentRoute | undefined;
+    const confidence = Number(parsed?.confidence ?? 0);
+
+    if (
+      (route === 'image_gen' || route === 'web_search' || route === 'chat')
+      && confidence >= 0.45
+    ) {
+      return route;
+    }
+    return null;
+  } catch (error: any) {
+    console.warn('[Agent] LLM 路由决策失败，降级规则路由:', error?.message);
+    return null;
+  }
+}
+
 // ==================== Agent 主流程 ====================
 
 export interface AgentResult {
@@ -149,6 +212,19 @@ export async function agentProcess(
     model: settings.deepseekModel,
   });
 
+  // 先走 LLM 路由，失败再走规则路由
+  let route = await decideRouteWithLLM(userText, settings);
+  if (!route) {
+    if (detectImageGenIntent(userText)) {
+      route = 'image_gen';
+    } else if (detectWebSearchIntent(userText)) {
+      route = 'web_search';
+    } else {
+      route = 'chat';
+    }
+  }
+  console.log('[Agent] 路由结果:', route);
+
   // ══════════════════════════════════════════════
   //  路由1：图片生成（严格匹配绘画指令）
   // ══════════════════════════════════════════════
@@ -156,7 +232,7 @@ export async function agentProcess(
     settings.agentEnabled &&
     settings.imageGenEnabled &&
     settings.dashscopeApiKey &&
-    detectImageGenIntent(userText)
+    route === 'image_gen'
   ) {
     console.log('[Agent] ✅ 匹配图片生成意图');
     if (onStream) onStream('🎨 正在生成图片，请稍候...', false);
@@ -193,14 +269,33 @@ export async function agentProcess(
     settings.agentEnabled &&
     settings.webSearchEnabled &&
     settings.dashscopeApiKey &&
-    detectWebSearchIntent(userText)
+    route === 'web_search'
   ) {
     console.log('[Agent] ✅ 匹配联网搜索意图');
     if (onStream) onStream('🔍 正在联网搜索...', false);
 
     try {
       // 第1步：Qwen + enable_search 获取搜索增强的事实信息（非流式）
-      const searchFacts = await searchAndExtract(userText, settings.dashscopeApiKey);
+      let searchFacts = await searchAndExtract(userText, settings.dashscopeApiKey);
+
+      // 回退：事实提取为空时，直接走 qwen 联网对话获取可用素材
+      if (!searchFacts) {
+        const fallbackPrompt: ApiMessage[] = [
+          {
+            role: 'system',
+            content:
+              '请基于联网检索结果，给出与用户问题强相关的最新事实摘要。'
+              + '要求：中文、客观、分点、尽量包含时间与来源线索。',
+          },
+          { role: 'user', content: userText },
+        ];
+        searchFacts = await qwenSearchChat(
+          fallbackPrompt,
+          settings.dashscopeApiKey,
+          undefined,
+          0.3,
+        );
+      }
 
       if (searchFacts) {
         console.log('[Agent] 搜索事实获取成功, 长度:', searchFacts.length);

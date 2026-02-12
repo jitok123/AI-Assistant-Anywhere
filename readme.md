@@ -11,10 +11,11 @@
 | AI 对话 | 流式响应，支持 DeepSeek / 通义千问 / Kimi / GLM / GPT 等所有兼容 OpenAI 格式的模型 |
 | 语音通话 | 类似豆包电话功能，按住说话，AI 自动语音回复，全屏通话界面 |
 | 多层 RAG 记忆 | 感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库 |
-| 联网搜索 | Agent 自主判断是否需要搜索，百度千帆 API 联网获取实时信息 |
+| 联网搜索 | Agent 自主判断是否需要搜索，使用 DashScope Qwen `enable_search` 获取实时信息 |
 | AI 绘图 | Agent 自主判断是否需要画图，阿里云 DashScope 文生图 |
 | 语音输入 | 阿里云 Paraformer ASR 语音识别 |
 | 图片理解 | 支持多模态模型（通义千问 VL / GPT-4o），发送图片给 AI 分析 |
+| 文件附件对话 | 聊天输入支持图片 + 文件附件（文本文件自动提取节选用于上下文） |
 | 知识库管理 | 上传 Markdown 文件构建本地知识库，支持向量检索 |
 | 数据导入导出 | 完整的对话、知识库备份与恢复 |
 | 暗色主题 | 自动跟随系统或手动切换 |
@@ -35,7 +36,7 @@ telephone_ai_anywhere/
 ├── src/                          # 核心代码层
 │   ├── components/               # UI 组件
 │   │   ├── MessageBubble.tsx     # 消息气泡（Markdown / 图片 / 搜索引用 / 工具调用）
-│   │   ├── ChatInput.tsx         # 输入框（文本 / 语音 / 图片）
+│   │   ├── ChatInput.tsx         # 输入框（文本 / 图片 / 文件附件）
 │   │   └── ConversationDrawer.tsx # 对话列表侧边栏
 │   │
 │   ├── services/                 # 后端服务层
@@ -121,7 +122,7 @@ telephone_ai_anywhere/
 
 ### AI Agent 工具链
 
-Agent 使用 DeepSeek Function Calling 机制自主决策：
+Agent 使用“LLM 路由优先 + 规则兜底”机制自主决策：
 
 1. **web_search** — 需要实时信息、新闻、不确定事实时触发
 2. **image_gen** — 用户明确要求画图时触发
@@ -149,7 +150,7 @@ Agent 使用 DeepSeek Function Calling 机制自主决策：
 | Embedding | 阿里云 DashScope text-embedding-v3 |
 | ASR | 阿里云 Paraformer v2 (FormData 上传) |
 | TTS | expo-speech (系统原生) |
-| 联网搜索 | 百度千帆 API |
+| 联网搜索 | DashScope Qwen enable_search |
 | AI 绘图 | 阿里云 DashScope wanx-v1 |
 | 流式传输 | XMLHttpRequest SSE (React Native 兼容) |
 | Markdown | react-native-markdown-display |
@@ -189,6 +190,8 @@ npx expo run:android
 2. **阿里云 DashScope API Key** — 用于 Embedding(RAG)、语音识别、图片生成
 3. **百度千帆 API Key** — 用于联网搜索（可选）
 
+> 说明：当前联网搜索默认走 DashScope（与 Embedding/生图复用同一 Key）。
+
 ---
 
 ## 语音通话功能
@@ -220,7 +223,14 @@ npm run build:aab
 ```
 
 ---
+## 项目架构文档
 
+- [architecture_overview.md](架构文档/log7_architecture_overview.md)
+- [log8_message_pipeline.md](架构文档/log8_message_pipeline.md)
+- [log9_agent_routing.md](架构文档/log9_agent_routing.md)
+- [log10_rag_architecture.md](架构文档/log10_rag_architecture.md)
+- [log11_streaming_state.md](架构文档/log11_streaming_state.md)
+- [log12_dataflow_errors.md](架构文档/log12_dataflow_errors.md)
 ## 许可证
 
 MIT License

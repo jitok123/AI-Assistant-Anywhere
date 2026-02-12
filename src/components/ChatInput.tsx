@@ -14,31 +14,62 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../hooks/useTheme';
 import { useAppStore } from '../store';
-import { saveImageLocally } from '../utils/fileUtils';
+import {
+  pickChatFile,
+  readTextFileSafely,
+  saveFileLocally,
+  saveImageLocally,
+} from '../utils/fileUtils';
+
+type PendingAttachment =
+  | {
+      kind: 'image';
+      uri: string;
+      name: string;
+    }
+  | {
+      kind: 'file';
+      uri: string;
+      name: string;
+      mimeType?: string;
+      textContent?: string;
+    };
 
 export function ChatInput() {
   const colors = useTheme();
   const [text, setText] = useState('');
-  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const inputRef = useRef<TextInput>(null);
 
-  const { sendMessage, isLoading, stopGeneration, settings } =
+  const { sendMessage, isLoading, stopGeneration } =
     useAppStore();
 
   // 发送消息（文本 + 可选图片）
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed && !pendingImage) return;
+    if (!trimmed && !pendingAttachment) return;
     if (isLoading) return;
 
     const currentText = trimmed;
-    const currentImage = pendingImage;
+    const attachment = pendingAttachment;
     setText('');
-    setPendingImage(null);
+    setPendingAttachment(null);
 
     try {
-      if (currentImage) {
-        await sendMessage(currentText || '请描述这张图片', 'image', currentImage);
+      if (attachment?.kind === 'image') {
+        await sendMessage(currentText || '请描述这张图片', 'image', attachment.uri);
+      } else if (attachment?.kind === 'file') {
+        await sendMessage(
+          currentText || `请帮我分析文件：${attachment.name}`,
+          'file',
+          undefined,
+          {
+            uri: attachment.uri,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            textContent: attachment.textContent,
+          },
+        );
       } else {
         await sendMessage(currentText, 'text');
       }
@@ -49,7 +80,7 @@ export function ChatInput() {
 
   // 移除待附加的图片
   const removePendingImage = () => {
-    setPendingImage(null);
+    setPendingAttachment(null);
   };
 
   // 选择图片
@@ -63,7 +94,11 @@ export function ChatInput() {
       if (!result.canceled && result.assets[0]) {
         const localUri = await saveImageLocally(result.assets[0].uri);
         if (localUri) {
-          setPendingImage(localUri);
+          setPendingAttachment({
+            kind: 'image',
+            uri: localUri,
+            name: result.assets[0].fileName || '图片',
+          });
         }
       }
     } catch (error: any) {
@@ -71,14 +106,50 @@ export function ChatInput() {
     }
   };
 
+  // 选择文件
+  const pickFile = async () => {
+    try {
+      const file = await pickChatFile();
+      if (!file) return;
+
+      const localUri = await saveFileLocally(file.uri, file.name);
+      if (!localUri) {
+        Alert.alert('提示', '文件保存失败，请重试');
+        return;
+      }
+
+      const textContent = await readTextFileSafely(localUri, file.name, file.mimeType);
+
+      setPendingAttachment({
+        kind: 'file',
+        uri: localUri,
+        name: file.name,
+        mimeType: file.mimeType,
+        textContent,
+      });
+    } catch (error: any) {
+      Alert.alert('选择文件失败', error.message || '未知错误');
+    }
+  };
+
+  const chooseAttachment = () => {
+    Alert.alert('添加附件', '请选择要添加的附件类型', [
+      { text: '图片', onPress: pickImage },
+      { text: '文件', onPress: pickFile },
+      { text: '取消', style: 'cancel' },
+    ]);
+  };
+
   return (
       <View>
         {/* 图片预览 */}
-        {pendingImage && (
+        {pendingAttachment && (
           <View style={[styles.imagePreviewRow, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
             <View style={styles.imagePreviewWrap}>
-              <View style={[styles.imagePreviewPlaceholder, { backgroundColor: colors.inputBg }]}>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>📷 图片已选择</Text>
+              <View style={[styles.imagePreviewPlaceholder, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  {pendingAttachment.kind === 'image' ? `📷 ${pendingAttachment.name}` : `📎 ${pendingAttachment.name}`}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={removePendingImage}
@@ -92,7 +163,7 @@ export function ChatInput() {
         <View style={[styles.container, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
         {/* 图片按钮 */}
         <TouchableOpacity
-          onPress={pickImage}
+          onPress={chooseAttachment}
           style={[styles.iconBtn]}
           disabled={isLoading}
           activeOpacity={0.6}
@@ -134,10 +205,10 @@ export function ChatInput() {
             style={[
               styles.sendBtn,
               {
-                backgroundColor: text.trim() ? colors.primary : colors.border,
+                backgroundColor: text.trim() || pendingAttachment ? colors.primary : colors.border,
               },
             ]}
-            disabled={!text.trim() && !pendingImage}
+            disabled={!text.trim() && !pendingAttachment}
             activeOpacity={0.6}
           >
             <Text style={styles.sendBtnText}>↑</Text>
@@ -151,44 +222,45 @@ export function ChatInput() {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     borderTopWidth: 0.5,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     justifyContent: 'center',
     alignItems: 'center',
   },
   // 图片按钮：圆形 +
   iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1.5,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.2,
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconSymbol: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '600',
-    marginTop: -1,
+    marginTop: -2,
   },
   inputWrap: {
     flex: 1,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    maxHeight: 120,
-    marginHorizontal: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 46,
+    maxHeight: 124,
+    marginHorizontal: 8,
   },
   input: {
     fontSize: 15,
-    maxHeight: 100,
-    lineHeight: 20,
+    maxHeight: 98,
+    lineHeight: 21,
   },
   // 录音按钮
   micBtn: {
@@ -205,9 +277,9 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -237,6 +309,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    borderWidth: 0.5,
   },
   imageRemoveBtn: {
     marginLeft: 8,
