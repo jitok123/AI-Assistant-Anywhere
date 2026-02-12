@@ -57,7 +57,12 @@ export interface RagSearchResult {
 // ==================== AI Agent ====================
 
 /** Agent 可用工具类型 */
-export type AgentToolType = 'web_search' | 'image_gen' | 'rag_query';
+export type AgentToolType =
+  | 'web_search'
+  | 'image_gen'
+  | 'rag_query'
+  | 'time_now'
+  | 'vision_analyze';
 
 /** 工具调用记录 */
 export interface ToolCallRecord {

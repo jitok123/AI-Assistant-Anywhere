@@ -1,7 +1,7 @@
 /**
  * 对话列表侧边栏组件（抽屉）
  */
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -22,15 +22,24 @@ interface Props {
 export function ConversationDrawer({ onClose }: Props) {
   const colors = useTheme();
   const router = useRouter();
+  const [editMode, setEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const {
     conversations,
     currentConversationId,
     selectConversation,
     newConversation,
     deleteConversation,
+    deleteConversations,
   } = useAppStore();
 
   const handleSelect = async (id: string) => {
+    if (editMode) {
+      setSelectedIds((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      );
+      return;
+    }
     await selectConversation(id);
     onClose();
   };
@@ -47,6 +56,40 @@ export function ConversationDrawer({ onClose }: Props) {
         text: '删除',
         style: 'destructive',
         onPress: () => deleteConversation(id),
+      },
+    ]);
+  };
+
+  const toggleEditMode = () => {
+    setEditMode((prev) => !prev);
+    setSelectedIds([]);
+  };
+
+  const allSelected = useMemo(
+    () => conversations.length > 0 && selectedIds.length === conversations.length,
+    [selectedIds.length, conversations.length]
+  );
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(conversations.map((c) => c.id));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedIds.length) return;
+    Alert.alert('批量删除', `确定删除已选中的 ${selectedIds.length} 个会话吗？`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteConversations(selectedIds);
+          setSelectedIds([]);
+          setEditMode(false);
+        },
       },
     ]);
   };
@@ -85,10 +128,30 @@ export function ConversationDrawer({ onClose }: Props) {
       {/* 头部 */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.text }]}>对话列表</Text>
-        <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-          <Text style={{ color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>✕</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={toggleEditMode} style={styles.headerActionBtn}>
+            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>
+              {editMode ? '完成' : '编辑'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <Text style={{ color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>✕</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {editMode && (
+        <View style={[styles.editToolbar, { borderBottomColor: colors.border }]}> 
+          <TouchableOpacity onPress={toggleSelectAll}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+              {allSelected ? '取消全选' : '全选'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ color: colors.textTertiary, fontSize: 12 }}>
+            已选 {selectedIds.length} 项
+          </Text>
+        </View>
+      )}
 
       {/* 新建对话 */}
       <TouchableOpacity
@@ -120,20 +183,39 @@ export function ConversationDrawer({ onClose }: Props) {
                   },
                 ]}
                 onPress={() => handleSelect(item.id)}
-                onLongPress={() => handleDelete(item.id, item.title)}
+                onLongPress={() => !editMode && handleDelete(item.id, item.title)}
               >
-                <Text
-                  style={[
-                    styles.itemTitle,
-                    { color: isActive ? colors.primary : colors.text },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.title}
-                </Text>
-                <Text style={[styles.itemDate, { color: colors.textSecondary }]}>
-                  {formatDate(item.updatedAt)}
-                </Text>
+                <View style={styles.itemMain}>
+                  {editMode && (
+                    <View
+                      style={[
+                        styles.checkbox,
+                        {
+                          borderColor: selectedIds.includes(item.id) ? colors.primary : colors.border,
+                          backgroundColor: selectedIds.includes(item.id) ? colors.primary : 'transparent',
+                        },
+                      ]}
+                    >
+                      {selectedIds.includes(item.id) && (
+                        <Text style={styles.checkboxTick}>✓</Text>
+                      )}
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.itemTitle,
+                        { color: isActive ? colors.primary : colors.text },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {item.title}
+                    </Text>
+                    <Text style={[styles.itemDate, { color: colors.textSecondary }]}>
+                      {formatDate(item.updatedAt)}
+                    </Text>
+                  </View>
+                </View>
               </Pressable>
             </View>
           );
@@ -147,6 +229,21 @@ export function ConversationDrawer({ onClose }: Props) {
 
       {/* 底部导航 */}
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        {editMode ? (
+          <TouchableOpacity
+            style={[
+              styles.bulkDeleteBtn,
+              {
+                backgroundColor: selectedIds.length ? colors.danger : colors.border,
+              },
+            ]}
+            onPress={handleBulkDelete}
+            disabled={!selectedIds.length}
+          >
+            <Text style={styles.bulkDeleteText}>删除已选会话</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => {
@@ -165,6 +262,8 @@ export function ConversationDrawer({ onClose }: Props) {
         >
           <Text style={{ color: colors.textSecondary, fontSize: 14 }}>知识库</Text>
         </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   );
@@ -183,6 +282,15 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 14,
     borderBottomWidth: 0.5,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   title: {
     fontSize: 18,
@@ -203,6 +311,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  editToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 0.5,
+  },
   item: {
     marginHorizontal: 10,
     marginBottom: 8,
@@ -222,6 +338,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  itemMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxTick: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: -1,
+  },
   itemDate: {
     fontSize: 12,
     marginTop: 4,
@@ -240,5 +375,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
+  },
+  bulkDeleteBtn: {
+    flex: 1,
+    marginHorizontal: 14,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  bulkDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

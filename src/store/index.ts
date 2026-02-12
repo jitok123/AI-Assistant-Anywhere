@@ -23,6 +23,7 @@ import {
   createConversation,
   getAllConversations,
   deleteConversation as dbDeleteConversation,
+  deleteConversations as dbDeleteConversations,
   updateConversationTitle,
   addMessage,
   updateMessageContent,
@@ -35,14 +36,16 @@ import {
   getRagStats,
 } from '../services/database';
 import { chatCompletion, generateTitle } from '../services/deepseek';
-import { agentProcess } from '../services/agent';
+import { agentProcess, detectWebSearchIntent } from '../services/agent';
+import { searchAndExtract, qwenSearchChat } from '../services/webSearch';
 import {
   multiLayerSearch,
   buildRagContext,
   postConversationUpdate,
 } from '../services/ragSpecialist';
-import { searchRag, addChatToRag } from '../services/rag';
+import { addChatToRag } from '../services/rag';
 import { imageToBase64 } from '../utils/fileUtils';
+import { buildTimeContextLine } from '../utils/time';
 import type { ExportData } from '../types';
 
 interface AppState {
@@ -62,6 +65,7 @@ interface AppState {
   newConversation: () => Promise<string>;
   selectConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
+  deleteConversations: (ids: string[]) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
 
   // 消息
@@ -214,6 +218,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(updates as any);
   },
 
+  /** 批量删除对话 */
+  deleteConversations: async (ids: string[]) => {
+    if (!ids.length) return;
+    await dbDeleteConversations(ids);
+    const state = get();
+    const idSet = new Set(ids);
+    const newConversations = state.conversations.filter((c) => !idSet.has(c.id));
+    const updates: Partial<AppState> = { conversations: newConversations };
+
+    if (state.currentConversationId && idSet.has(state.currentConversationId)) {
+      updates.currentConversationId = null;
+      updates.messages = [];
+    }
+
+    set(updates as any);
+  },
+
   /** 重命名对话 */
   renameConversation: async (id: string, title: string) => {
     await updateConversationTitle(id, title);
@@ -311,7 +332,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const apiMessages: ApiMessage[] = [];
 
       // 系统提示（含多层 RAG 上下文）
-      let systemPrompt = settings.systemPrompt;
+      let systemPrompt = `${settings.systemPrompt}\n\n${buildTimeContextLine()}`;
       if (ragContext) {
         systemPrompt += `\n\n以下是从多层记忆系统中检索到的相关内容：\n${ragContext}`;
       }
@@ -325,13 +346,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // 当前用户消息
+      let imageBase64: string | null = null;
       if (imageUri) {
-        const base64 = await imageToBase64(imageUri);
+        imageBase64 = await imageToBase64(imageUri);
         apiMessages.push({
           role: 'user',
           content: [
             { type: 'text', text: content || '请描述这张图片' },
-            { type: 'image_url', image_url: { url: base64 } },
+            { type: 'image_url', image_url: { url: imageBase64 } },
           ],
         });
       } else if (type === 'file' && fileAttachment) {
@@ -351,7 +373,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // ── 步骤3：AI Agent 处理（含工具调用决策） ──
-      // 图片消息使用 DashScope 视觉模型直接处理（绕过 Agent）
       let agentResult;
       // 流式回调：更新消息内容，done=true 时立即清除 loading 状态
       const streamCallback = (chunk: string, done: boolean) => {
@@ -370,16 +391,140 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
 
       if (imageUri && settings.dashscopeApiKey) {
+        const imageQuestion = content || '请描述这张图片';
+        const shouldSearchAfterVision =
+          settings.agentEnabled
+          && settings.webSearchEnabled
+          && detectWebSearchIntent(imageQuestion);
+
+        set({ streamingContent: '🖼️ 正在识别图片内容...' });
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === aiMsg.id ? { ...m, content: '🖼️ 正在识别图片内容...' } : m
+          ),
+        }));
+
+        const visionOnlyMessages: ApiMessage[] = [
+          {
+            role: 'system',
+            content:
+              '你是专业图像分析助手。请先客观描述图片中可见信息，再回答用户问题。'
+              + '禁止臆测无法从图片直接确认的细节。',
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: imageQuestion },
+              { type: 'image_url', image_url: { url: imageBase64! } },
+            ],
+          },
+        ];
+
         const visionContent = await chatCompletion(
-          apiMessages,
+          visionOnlyMessages,
           settings.dashscopeApiKey,
           'https://dashscope.aliyuncs.com/compatible-mode/v1',
           'qwen-vl-max',
-          streamCallback,
-          settings.temperature,
+          undefined,
+          0.3,
           settings.maxTokens,
         );
-        agentResult = { content: visionContent, toolCalls: [] };
+
+        const toolCalls: any[] = [
+          {
+            tool: 'vision_analyze',
+            input: imageQuestion,
+            output: visionContent.slice(0, 800),
+            timestamp: Date.now(),
+          },
+        ];
+
+        if (shouldSearchAfterVision) {
+          set({ streamingContent: '🔍 已识别图片，正在联网补充信息...' });
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === aiMsg.id ? { ...m, content: '🔍 已识别图片，正在联网补充信息...' } : m
+            ),
+          }));
+
+          let searchFacts = await searchAndExtract(
+            `${imageQuestion}\n\n【图片识别要点】\n${visionContent}`,
+            settings.dashscopeApiKey,
+          );
+
+          if (!searchFacts) {
+            searchFacts = await qwenSearchChat(
+              [
+                {
+                  role: 'system',
+                  content:
+                    '请基于联网检索结果，给出与用户问题及图片内容强相关的最新事实摘要。'
+                    + '要求：中文、客观、尽量包含时间与来源线索。',
+                },
+                {
+                  role: 'user',
+                  content: `${imageQuestion}\n\n图片识别结果：${visionContent}`,
+                },
+              ],
+              settings.dashscopeApiKey,
+              undefined,
+              0.3,
+            );
+          }
+
+          if (searchFacts) {
+            toolCalls.push({
+              tool: 'web_search',
+              input: imageQuestion,
+              output: searchFacts.slice(0, 800),
+              timestamp: Date.now(),
+            });
+          }
+
+          const enhancedMessages: ApiMessage[] = [];
+          for (const m of apiMessages) {
+            if (m.role === 'user' && Array.isArray(m.content)) {
+              const textPart = (m.content as any[])
+                .filter((part: any) => part.type === 'text')
+                .map((part: any) => part.text || '')
+                .join('\n')
+                .trim();
+              enhancedMessages.push({ role: 'user', content: textPart || imageQuestion });
+            } else {
+              enhancedMessages.push(m);
+            }
+          }
+
+          const sysIdx = enhancedMessages.findIndex((m) => m.role === 'system');
+          const injectedContext =
+            `\n\n【图片识别结果】\n${visionContent}`
+            + (searchFacts ? `\n\n【联网搜索结果】\n${searchFacts}` : '')
+            + '\n\n请严格基于上述材料回答，若证据不足请明确说明不确定。';
+
+          if (sysIdx >= 0 && typeof enhancedMessages[sysIdx].content === 'string') {
+            enhancedMessages[sysIdx] = {
+              ...enhancedMessages[sysIdx],
+              content: (enhancedMessages[sysIdx].content as string) + injectedContext,
+            };
+          } else {
+            enhancedMessages.unshift({ role: 'system', content: `你是一个严谨的中文助手。${injectedContext}` });
+          }
+
+          const finalContent = await chatCompletion(
+            enhancedMessages,
+            settings.deepseekApiKey,
+            settings.deepseekBaseUrl,
+            settings.deepseekModel,
+            streamCallback,
+            settings.temperature,
+            settings.maxTokens,
+          );
+
+          agentResult = { content: finalContent, toolCalls };
+        } else {
+          streamCallback(visionContent, true);
+          agentResult = { content: visionContent, toolCalls };
+        }
       } else {
         agentResult = await agentProcess(
           apiMessages,

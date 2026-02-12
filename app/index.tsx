@@ -95,7 +95,7 @@ export default function ChatScreen() {
         </TouchableOpacity>
 
         <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-          {currentConv?.title || '随身AI助手'}
+          {currentConv?.title || '新对话'}
         </Text>
 
         <View style={styles.headerRight}>
@@ -119,7 +119,7 @@ export default function ChatScreen() {
             <Text style={[styles.emptyLogoText, { color: colors.primary }]}>AI</Text>
           </View>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            随身AI助手
+            新对话
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
             多层记忆 · 联网搜索 · 图片生成 · 图片理解
@@ -280,9 +280,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyLogo: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    width: 64,
+    height: 64,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   emptyTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     marginBottom: 8,
   },

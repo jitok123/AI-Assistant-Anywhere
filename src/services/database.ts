@@ -171,6 +171,16 @@ export async function deleteConversation(id: string): Promise<void> {
   await database.runAsync('DELETE FROM conversations WHERE id = ?', [id]);
 }
 
+/** 批量删除对话及其消息 */
+export async function deleteConversations(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const database = getDatabase();
+  for (const id of ids) {
+    await database.runAsync('DELETE FROM messages WHERE conversation_id = ?', [id]);
+    await database.runAsync('DELETE FROM conversations WHERE id = ?', [id]);
+  }
+}
+
 // ==================== 消息管理 ====================
 
 /** 添加消息 */

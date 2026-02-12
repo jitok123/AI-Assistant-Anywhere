@@ -17,6 +17,7 @@ import { chatCompletion } from './deepseek';
 import { chatCompletionRaw } from './deepseek';
 import { searchAndExtract, qwenSearchChat } from './webSearch';
 import { generateImage } from './imageGen';
+import { detectTimeIntent, formatTimeToolAnswer } from '../utils/time';
 import type {
   ApiMessage,
   AppSettings,
@@ -25,7 +26,7 @@ import type {
   WebSearchResult,
 } from '../types';
 
-type AgentRoute = 'image_gen' | 'web_search' | 'chat';
+type AgentRoute = 'image_gen' | 'web_search' | 'time_query' | 'chat';
 
 // ==================== 严格意图检测 ====================
 
@@ -92,7 +93,7 @@ function detectImageGenIntent(text: string): boolean {
  * 检测是否为联网搜索意图
  * 匹配时间敏感、实时性强的问题
  */
-function detectWebSearchIntent(text: string): boolean {
+export function detectWebSearchIntent(text: string): boolean {
   const PATTERNS: RegExp[] = [
     /搜[索一查]|搜[一]?下/,                   // 搜索/搜一下
     /[今明昨]天.*[新闻消息天气事件热点]/,        // 今天的新闻
@@ -134,8 +135,9 @@ async function decideRouteWithLLM(
           + '请把用户输入分类到以下 route：\n'
           + '1) image_gen: 用户明确要你生成/绘制/创建图片或插画\n'
           + '2) web_search: 用户问题依赖最新事实、实时信息、新闻、价格、天气、比分、近期动态\n'
-          + '3) chat: 其它普通对话\n\n'
-          + '输出格式必须是：{"route":"image_gen|web_search|chat","confidence":0-1}\n'
+            + '3) time_query: 用户在问当前时间、日期、星期、时间戳\n'
+            + '4) chat: 其它普通对话\n\n'
+            + '输出格式必须是：{"route":"image_gen|web_search|time_query|chat","confidence":0-1}\n'
           + '不要包含 markdown，不要包含多余文本。',
       },
       { role: 'user', content: userText.slice(0, 2000) },
@@ -160,7 +162,7 @@ async function decideRouteWithLLM(
     const confidence = Number(parsed?.confidence ?? 0);
 
     if (
-      (route === 'image_gen' || route === 'web_search' || route === 'chat')
+      (route === 'image_gen' || route === 'web_search' || route === 'time_query' || route === 'chat')
       && confidence >= 0.45
     ) {
       return route;
@@ -217,6 +219,8 @@ export async function agentProcess(
   if (!route) {
     if (detectImageGenIntent(userText)) {
       route = 'image_gen';
+    } else if (detectTimeIntent(userText)) {
+      route = 'time_query';
     } else if (detectWebSearchIntent(userText)) {
       route = 'web_search';
     } else {
@@ -346,6 +350,21 @@ export async function agentProcess(
     }
     // 搜索失败则降级到普通对话
     console.log('[Agent] 联网搜索失败，降级到普通对话');
+  }
+
+  // ══════════════════════════════════════════════
+  //  路由3：时间工具（本地函数）
+  // ══════════════════════════════════════════════
+  if (route === 'time_query') {
+    const content = formatTimeToolAnswer();
+    toolCalls.push({
+      tool: 'time_now',
+      input: userText,
+      output: content,
+      timestamp: Date.now(),
+    });
+    if (onStream) onStream(content, true);
+    return { content, toolCalls };
   }
 
   // ══════════════════════════════════════════════
