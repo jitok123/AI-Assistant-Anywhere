@@ -116,18 +116,27 @@ graph TD
 
 ---
 
-## 3. 图片消息特殊处理流程
+## 3. 图片消息特殊处理流程（新版）
 
 ```mermaid
 graph TD
     IMG["用户发送图片"] --> B64["imageToBase64(uri)"]
-    B64 --> MC["构建 multimodal content:<br/>[{type:'text', text}, {type:'image_url', url:base64}]"]
-    MC --> VIS["直接调用 DashScope<br/>qwen-vl-max<br/>(绕过 Agent)"]
-    VIS --> RES["视觉模型回复"]
-    RES --> SAVE["保存到 DB + 更新 UI"]
+    B64 --> VIS["qwen-vl-max 视觉识别"]
+    VIS --> NEED{"问题是否需要联网?"}
+    NEED -->|否| DIRECT["直接输出视觉分析"]
+    NEED -->|是| SEARCH["qwen-plus enable_search<br/>检索实时事实"]
+    SEARCH --> SYN["DeepSeek 综合回答<br/>图像事实 + 联网事实"]
+    DIRECT --> SAVE["保存到 DB + 更新 UI"]
+    SYN --> SAVE
+
+    IMG --> PROMPT["若为生图请求：\nAgent 先用 LLM 优化提示词"]
+    PROMPT --> DRAW["DashScope qwen-image-max 生成"]
+    DRAW --> SAVE
 
     style IMG fill:#FCE4EC
     style VIS fill:#E8F5E9
+    style SEARCH fill:#E3F2FD
+    style DRAW fill:#FFF3E0
     style SAVE fill:#ECEFF1
 ```
 
@@ -174,4 +183,18 @@ graph TD
 
 - 侧栏新增编辑模式，支持多选/全选后批量删除会话。
 - 状态层新增 `deleteConversations(ids)`，数据库层新增对应批量删除接口。
+
+## 8. 2026-02-13 补充（可维护性）
+
+### 8.1 API 版本集中配置
+
+- 新增 `src/config/api.ts`：统一维护 API 版本与端点构造。
+- `deepseek/webSearch/imageGen/store` 改为从配置函数获取 URL，避免路径散落硬编码。
+
+### 8.2 统一错误处理
+
+- 新增 `src/services/errorHandler.ts`：
+    - 统一 `reportError` 输出结构化日志
+    - `toUserFriendlyMessage` 统一用户可读错误文案
+    - 预留 Sentry 接入点（按需启用）
 

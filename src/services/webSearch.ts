@@ -12,10 +12,11 @@
  *   2. qwenSearchChat  — 直接流式回复（备用）
  */
 import type { WebSearchResult, ApiMessage, StreamCallback } from '../types';
+import { getDashScopeCompatibleChatUrl } from '../config/api';
+import { reportError } from './errorHandler';
 
 /** DashScope OpenAI 兼容端点 */
-const DASHSCOPE_CHAT_URL =
-  'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+const DASHSCOPE_CHAT_URL = getDashScopeCompatibleChatUrl();
 
 /** 联网搜索使用的 Qwen 模型 */
 const SEARCH_MODEL = 'qwen-plus';
@@ -71,7 +72,11 @@ export async function searchAndExtract(
     console.log('[WebSearch] ✅ 事实提取完成, 长度:', content.length);
     return content;
   } catch (error: any) {
-    console.error('[WebSearch] searchAndExtract 错误:', error?.message || error);
+    reportError(error, {
+      module: 'webSearch',
+      action: 'searchAndExtract',
+      extra: { queryPreview: query.slice(0, 120) },
+    });
     return '';
   }
 }

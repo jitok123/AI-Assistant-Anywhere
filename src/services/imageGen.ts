@@ -7,13 +7,17 @@
  * API: POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
  */
 import type { ImageGenResult } from '../types';
+import {
+  getDashScopeImageGenerationUrl,
+  getDashScopeTaskBaseUrl,
+} from '../config/api';
+import { reportError } from './errorHandler';
 
 /** qwen-image-max 使用 multimodal-generation 同步端点 */
-const DASHSCOPE_IMAGE_URL =
-  'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
+const DASHSCOPE_IMAGE_URL = getDashScopeImageGenerationUrl();
 
 /** 旧版异步任务查询端点（兼容降级） */
-const DASHSCOPE_TASK_URL = 'https://dashscope.aliyuncs.com/api/v1/tasks';
+const DASHSCOPE_TASK_URL = getDashScopeTaskBaseUrl();
 
 /**
  * 使用 qwen-image-max 生成图片
@@ -93,7 +97,11 @@ export async function generateImage(
     console.error('[ImageGen] 无法解析响应:', JSON.stringify(data).slice(0, 500));
     return null;
   } catch (error: any) {
-    console.error('[ImageGen] 错误:', error?.message || error);
+    reportError(error, {
+      module: 'imageGen',
+      action: 'generateImage',
+      extra: { model, size },
+    });
     return null;
   }
 }
@@ -163,7 +171,11 @@ async function pollImageResult(
         console.log(`[ImageGen] 任务状态: ${status}, 已等待 ${(i + 1) * interval / 1000}s...`);
       }
     } catch (error: any) {
-      console.warn('[ImageGen] 轮询错误:', error?.message);
+      reportError(error, {
+        module: 'imageGen',
+        action: 'pollImageResult',
+        extra: { taskId, attempt: i + 1 },
+      }, 'warning');
     }
   }
 

@@ -4,7 +4,7 @@
 
 ---
 
-## 1. 三路意图路由总览
+## 1. 四路意图路由总览
 
 ```mermaid
 flowchart TD
@@ -26,11 +26,14 @@ flowchart TD
     SEARCH_DET -->|"✅ 匹配"| SEARCH_ROUTE["🔍 路由2: 联网搜索"]
     SEARCH_DET -->|"❌ 不匹配"| NORMAL
 
-    NORMAL["💬 路由3: 普通对话"]
+    SEARCH_DET -->|"❌ 不匹配"| TIME_DET["detectTimeIntent(text)"]
+    TIME_DET -->|"✅ 匹配"| TIME_ROUTE["🕒 路由3: 时间工具"]
+    TIME_DET -->|"❌ 不匹配"| NORMAL["💬 路由4: 普通对话"]
 
     subgraph R1["路由1: 图片生成"]
         IMG_ROUTE --> IMG_STREAM["onStream: 🎨 正在生成图片..."]
-        IMG_STREAM --> IMG_CALL["generateImage(text, apiKey)"]
+        IMG_STREAM --> IMG_OPT["LLM 优化生图提示词"]
+        IMG_OPT --> IMG_CALL["generateImage(optimizedPrompt, apiKey)"]
         IMG_CALL -->|"成功"| IMG_OK["返回 generatedImageUrl<br/>+ 简短确认文字"]
         IMG_CALL -->|"失败"| IMG_FALL["降级 → 路由2 检查"]
     end
@@ -43,7 +46,11 @@ flowchart TD
         S_EXTRACT -->|"失败"| S_FALL["降级 → 路由3"]
     end
 
-    subgraph R3["路由3: 普通对话"]
+    subgraph R3["路由3: 时间工具"]
+        TIME_ROUTE --> TIME_LOCAL["本地函数返回时间/日期/星期/时间戳"]
+    end
+
+    subgraph R4["路由4: 普通对话"]
         NORMAL --> DS_CALL["chatCompletion(流式)<br/>DeepSeek 直接回复"]
     end
 
@@ -52,11 +59,13 @@ flowchart TD
 
     IMG_OK --> DONE(["✅ 返回 AgentResult"])
     S_DEEPSEEK --> DONE
+    TIME_LOCAL --> DONE
     DS_CALL --> DONE
 
     style R1 fill:#FCE4EC,stroke:#C62828
     style R2 fill:#E8F5E9,stroke:#2E7D32
-    style R3 fill:#E3F2FD,stroke:#1565C0
+    style R3 fill:#FFF3E0,stroke:#FB8C00
+    style R4 fill:#E3F2FD,stroke:#1565C0
     style DONE fill:#C8E6C9,stroke:#1B5E20
 ```
 

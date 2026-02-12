@@ -204,7 +204,7 @@ export async function imageToBase64(uri: string): Promise<string> {
 export async function getStorageSize(): Promise<string> {
   try {
     await ensureDirectory(DATA_DIR);
-    const info = await FileSystem.getInfoAsync(DATA_DIR, { size: true });
+    const info = await FileSystem.getInfoAsync(DATA_DIR);
     const bytes = (info as any).size || 0;
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

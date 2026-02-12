@@ -17,6 +17,7 @@ import { chatCompletion } from './deepseek';
 import { chatCompletionRaw } from './deepseek';
 import { searchAndExtract, qwenSearchChat } from './webSearch';
 import { generateImage } from './imageGen';
+import { reportError } from './errorHandler';
 import { detectTimeIntent, formatTimeToolAnswer } from '../utils/time';
 import type {
   ApiMessage,
@@ -27,6 +28,51 @@ import type {
 } from '../types';
 
 type AgentRoute = 'image_gen' | 'web_search' | 'time_query' | 'chat';
+
+async function optimizeImagePromptWithAI(userText: string, settings: AppSettings): Promise<string> {
+  if (!settings.deepseekApiKey) {
+    return `高质量写实人像，主体特征：${userText}`;
+  }
+
+  try {
+    const promptMessages: ApiMessage[] = [
+      {
+        role: 'system',
+        content:
+          '你是专业的文生图提示词工程师。请把用户输入改写为可直接用于图像模型的高质量提示词。'
+          + '输出要求：\n'
+          + '1) 只输出最终提示词，不要解释\n'
+          + '2) 补足画面构图、光线、镜头、材质细节\n'
+          + '3) 若用户描述不完整，做合理补全但不要偏离意图\n'
+          + '4) 使用中文，简洁有力（220字）\n'
+          + '5) 默认风格写实，质量优先\n',
+      },
+      { role: 'user', content: userText.slice(0, 1500) },
+    ];
+
+    const raw = await chatCompletionRaw(
+      promptMessages,
+      settings.deepseekApiKey,
+      settings.deepseekBaseUrl,
+      settings.deepseekModel,
+      0.3,
+      300,
+    );
+
+    const out = raw?.choices?.[0]?.message?.content || '';
+    if (typeof out === 'string' && out.trim()) {
+      return out.trim().slice(0, 400);
+    }
+  } catch (error: any) {
+    reportError(error, {
+      module: 'agent',
+      action: 'optimizeImagePromptWithAI',
+      extra: { preview: userText.slice(0, 120) },
+    }, 'warning');
+  }
+
+  return `高质量写实风格，主体需求：${userText}。构图完整，细节清晰，光线自然，面部与材质细节精致，4K，高保真。`;
+}
 
 // ==================== 严格意图检测 ====================
 
@@ -242,7 +288,10 @@ export async function agentProcess(
     if (onStream) onStream('🎨 正在生成图片，请稍候...', false);
 
     try {
-      const imageResult = await generateImage(userText, settings.dashscopeApiKey);
+      const optimizedPrompt = await optimizeImagePromptWithAI(userText, settings);
+      console.log('[Agent] 生图提示词已优化, 长度:', optimizedPrompt.length);
+
+      const imageResult = await generateImage(optimizedPrompt, settings.dashscopeApiKey);
 
       if (imageResult?.url) {
         // 不在 content 中放 Markdown 图片语法，避免渲染崩溃
@@ -253,14 +302,18 @@ export async function agentProcess(
         toolCalls.push({
           tool: 'image_gen',
           input: userText,
-          output: imageResult.url,
+          output: `prompt=${optimizedPrompt.slice(0, 220)} | url=${imageResult.url}`,
           timestamp: Date.now(),
         });
 
         return { content, toolCalls, generatedImageUrl: imageResult.url };
       }
     } catch (error: any) {
-      console.warn('[Agent] 图片生成失败:', error?.message);
+      reportError(error, {
+        module: 'agent',
+        action: 'image_gen',
+        extra: { preview: userText.slice(0, 120) },
+      }, 'warning');
     }
     // 失败则降级到普通对话
     console.log('[Agent] 图片生成失败，降级到普通对话');

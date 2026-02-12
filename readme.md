@@ -13,6 +13,7 @@
 | 多层 RAG 记忆 | 感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库 |
 | 联网搜索 | Agent 自主判断是否需要搜索，使用 DashScope Qwen `enable_search` 获取实时信息 |
 | AI 绘图 | Agent 自主判断是否需要画图，阿里云 DashScope 文生图 |
+| 出图提示词优化 | 生图前先由 LLM 自动优化提示词，不再直接转发用户原话 |
 | 语音输入 | 阿里云 Paraformer ASR 语音识别 |
 | 图片理解 | 支持多模态模型（通义千问 VL / GPT-4o），发送图片给 AI 分析 |
 | 文件附件对话 | 聊天输入支持图片 + 文件附件（文本文件自动提取节选用于上下文） |
@@ -21,6 +22,8 @@
 | 知识库管理 | 上传 Markdown 文件构建本地知识库，支持向量检索 |
 | 数据导入导出 | 完整的对话、知识库备份与恢复 |
 | 会话批量删除 | 侧栏支持编辑模式、多选/全选后批量删除 |
+| 统一错误处理 | 全局 ErrorHandler 统一日志结构（预留 Sentry 接入） |
+| API 版本配置 | 统一维护 API 版本和端点路径构造 |
 | 暗色主题 | 自动跟随系统或手动切换 |
 
 ---
@@ -51,6 +54,7 @@ telephone_ai_anywhere/
 │   │   ├── voice.ts              # 语音服务（ASR + TTS + 超时处理）
 │   │   ├── webSearch.ts          # 联网搜索（百度千帆）
 │   │   ├── imageGen.ts           # AI 绘图（DashScope wanx）
+│   │   ├── errorHandler.ts       # 统一错误处理（可扩展 Sentry）
 │   │   └── database.ts           # SQLite 本地数据库
 │   │
 │   ├── store/                    # 全局状态
@@ -60,7 +64,8 @@ telephone_ai_anywhere/
 │   │   └── index.ts              # 所有接口和类型
 │   │
 │   ├── config/                   # 配置管理
-│   │   └── models.ts             # AI 模型预设（对话模型 + Embedding 模型）
+│   │   ├── models.ts             # AI 模型预设（对话模型 + Embedding 模型）
+│   │   └── api.ts                # API 版本与端点配置
 │   │
 │   ├── constants/                # 常量
 │   │   └── theme.ts              # 主题配色（亮色 / 暗色）

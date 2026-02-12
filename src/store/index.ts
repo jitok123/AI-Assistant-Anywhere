@@ -46,6 +46,8 @@ import {
 import { addChatToRag } from '../services/rag';
 import { imageToBase64 } from '../utils/fileUtils';
 import { buildTimeContextLine } from '../utils/time';
+import { getDashScopeCompatibleBaseUrl } from '../config/api';
+import { reportError, toUserFriendlyMessage } from '../services/errorHandler';
 import type { ExportData } from '../types';
 
 interface AppState {
@@ -423,7 +425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const visionContent = await chatCompletion(
           visionOnlyMessages,
           settings.dashscopeApiKey,
-          'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          getDashScopeCompatibleBaseUrl(),
           'qwen-vl-max',
           undefined,
           0.3,
@@ -589,28 +591,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.warn('[RAG] 后处理异常:', ragErr);
       }
     } catch (error: any) {
-      console.warn('[Store] sendMessage 错误:', error?.message);
+      reportError(error, {
+        module: 'store',
+        action: 'sendMessage',
+        extra: { type, hasImage: !!imageUri, hasFile: !!fileAttachment },
+      });
       if (error.name === 'AbortError') {
         set({ isLoading: false, streamingContent: '' });
         return;
       }
 
-      // 更友好的错误信息
-      let errorContent = '抱歉，发生了错误。';
-      const msg = error.message || '';
-      if (msg.includes('网络') || msg.includes('Network') || msg.includes('Failed to fetch')) {
-        errorContent = '网络连接失败，请检查网络后重试。';
-      } else if (msg.includes('超时') || msg.includes('timeout')) {
-        errorContent = '请求超时，请检查网络或稍后重试。';
-      } else if (msg.includes('401') || msg.includes('Unauthorized')) {
-        errorContent = 'API Key 无效，请在设置中检查。';
-      } else if (msg.includes('429') || msg.includes('rate')) {
-        errorContent = '请求过于频繁，请稍后重试。';
-      } else if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
-        errorContent = 'AI 服务暂时不可用，请稍后重试。';
-      } else if (msg) {
-        errorContent = `出错了：${msg.slice(0, 200)}`;
-      }
+      const errorContent = toUserFriendlyMessage(error);
 
       set((s) => ({
         messages: s.messages.map((m) =>

@@ -7,6 +7,8 @@
  * 网络容错：自动重试、超时处理
  */
 import type { ApiMessage, StreamCallback, ChatCompletionOptions } from '../types';
+import { buildOpenAIChatCompletionsUrl } from '../config/api';
+import { reportError } from './errorHandler';
 
 /** 网络请求重试配置 */
 const MAX_RETRIES = 2;
@@ -17,13 +19,7 @@ const RETRY_DELAY_MS = 1500;
  * 自动处理不同服务商的 BaseURL 格式差异
  */
 function buildApiUrl(baseUrl: string): string {
-  let url = baseUrl.replace(/\/+$/, '');
-  // 如果已包含 /chat/completions，直接使用
-  if (url.endsWith('/chat/completions')) return url;
-  // 如果已包含版本路径 (/v1, /v4 等)，只追加 /chat/completions
-  if (/\/v\d+$/.test(url)) return `${url}/chat/completions`;
-  // 否则追加完整路径 /v1/chat/completions
-  return `${url}/v1/chat/completions`;
+  return buildOpenAIChatCompletionsUrl(baseUrl);
 }
 
 /**
@@ -92,6 +88,11 @@ export async function chatCompletion(
       const content = choice?.message?.content || '';
       return content;
     } catch (error: any) {
+      reportError(error, {
+        module: 'deepseek',
+        action: 'chatCompletion',
+        extra: { model, attempt: attempt + 1 },
+      }, attempt < MAX_RETRIES ? 'warning' : 'error');
       lastError = error;
       // 4xx 不重试
       if (error.message?.includes('(4')) throw error;
@@ -151,6 +152,11 @@ export async function chatCompletionRaw(
 
       return response.json();
     } catch (error: any) {
+      reportError(error, {
+        module: 'deepseek',
+        action: 'chatCompletionRaw',
+        extra: { model, attempt: attempt + 1 },
+      }, attempt < MAX_RETRIES ? 'warning' : 'error');
       lastError = error;
       if (error.message?.includes('(4')) throw error;
       if (attempt < MAX_RETRIES) {
