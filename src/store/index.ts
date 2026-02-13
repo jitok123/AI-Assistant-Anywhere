@@ -10,9 +10,11 @@
  */
 import { create } from 'zustand';
 import * as Crypto from 'expo-crypto';
+import { AppState as RNAppState } from 'react-native';
 import type {
   Conversation,
   Message,
+  MessageAttachment,
   AppSettings,
   ChatMode,
   ApiMessage,
@@ -50,6 +52,28 @@ import { getDashScopeCompatibleBaseUrl } from '../config/api';
 import { reportError, toUserFriendlyMessage } from '../services/errorHandler';
 import type { ExportData } from '../types';
 
+type SendAttachment = {
+  kind: 'image' | 'file';
+  uri: string;
+  name: string;
+  mimeType?: string;
+  textContent?: string;
+};
+
+let postProcessTimer: any = null;
+let appLifecycleState = RNAppState.currentState;
+RNAppState.addEventListener('change', (nextState) => {
+  appLifecycleState = nextState;
+});
+
+function shouldDescribePreviousGeneratedImage(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return /刚才|上一张|上一个|前一张|刚生成|那张/.test(t)
+    && /图|图片|照片|画/.test(t)
+    && /描述|讲讲|分析|看看|解读|说说/.test(t);
+}
+
 interface AppState {
   // 初始化
   initialized: boolean;
@@ -84,6 +108,7 @@ interface AppState {
       mimeType?: string;
       textContent?: string;
     },
+    attachments?: SendAttachment[],
   ) => Promise<void>;
   stopGeneration: () => void;
 
@@ -258,6 +283,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       mimeType?: string;
       textContent?: string;
     },
+    attachments?: SendAttachment[],
   ) => {
     const state = get();
     const { settings } = state;
@@ -272,17 +298,39 @@ export const useAppStore = create<AppState>((set, get) => ({
       convId = await get().newConversation();
     }
 
+    const normalizedAttachments: SendAttachment[] = attachments?.length
+      ? attachments
+      : [
+          ...(imageUri ? [{ kind: 'image' as const, uri: imageUri, name: '图片' }] : []),
+          ...(fileAttachment ? [{ kind: 'file' as const, ...fileAttachment }] : []),
+        ];
+    const imageAttachments = normalizedAttachments.filter((a) => a.kind === 'image');
+    const fileAttachments = normalizedAttachments.filter((a) => a.kind === 'file');
+
     // 创建用户消息
+    const messageAttachments: MessageAttachment[] | undefined = normalizedAttachments.length
+      ? normalizedAttachments.map((a) => ({
+          kind: a.kind,
+          uri: a.uri,
+          name: a.name,
+          mimeType: a.mimeType,
+        }))
+      : undefined;
+
     const userMsg: Message = {
       id: Crypto.randomUUID(),
       conversationId: convId,
       role: 'user',
-      content: content || (type === 'file' ? `请分析文件：${fileAttachment?.name || '附件'}` : ''),
-      type,
-      imageUri,
-      fileUri: fileAttachment?.uri,
-      fileName: fileAttachment?.name,
-      fileMimeType: fileAttachment?.mimeType,
+      content:
+        content
+        || (fileAttachments.length ? `请分析文件：${fileAttachments[0]?.name || '附件'}` : '')
+        || (imageAttachments.length ? '请描述这些图片' : ''),
+      type: fileAttachments.length ? 'file' : imageAttachments.length ? 'image' : type,
+      imageUri: imageAttachments[0]?.uri,
+      fileUri: fileAttachments[0]?.uri,
+      fileName: fileAttachments[0]?.name,
+      fileMimeType: fileAttachments[0]?.mimeType,
+      attachments: messageAttachments,
       createdAt: Date.now(),
     };
     await addMessage(userMsg);
@@ -306,13 +354,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     const abortController = new AbortController();
     set({ _abortController: abortController } as any);
 
-    // ⏰ 安全超时：120s 后强制清除 loading（防止永久卡住）
-    const safetyTimeout = setTimeout(() => {
-      if (get().isLoading) {
+    // ⏰ 安全超时：前台 120s 后强制清除 loading（防止永久卡住）
+    //   若应用在后台，延后检查，避免后台阶段被误判中断。
+    let safetyTimeout: any = null;
+    const scheduleSafetyCheck = (delayMs: number) => {
+      safetyTimeout = setTimeout(() => {
+        if (!get().isLoading) return;
+        if (appLifecycleState !== 'active') {
+          console.log('[Store] 当前处于后台，延后进行 loading 安全检查');
+          scheduleSafetyCheck(60000);
+          return;
+        }
         console.warn('[Store] 安全超时触发，强制清除 loading');
         set({ isLoading: false, streamingContent: '' });
-      }
-    }, 120000);
+      }, delayMs);
+    };
+    scheduleSafetyCheck(120000);
 
     try {
       // ── 步骤1：RAG 专员检索（多层记忆） ──
@@ -348,27 +405,66 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // 当前用户消息
-      let imageBase64: string | null = null;
-      if (imageUri) {
-        imageBase64 = await imageToBase64(imageUri);
+      let imagePartsForCurrentTurn: Array<{ type: 'image_url'; image_url: { url: string } }> = [];
+      const shouldUsePreviousGeneratedImage =
+        type === 'text'
+        && !imageAttachments.length
+        && !fileAttachments.length
+        && shouldDescribePreviousGeneratedImage(content);
+      const latestGeneratedImage = shouldUsePreviousGeneratedImage
+        ? [...get().messages].reverse().find((m) => m.role === 'assistant' && !!m.generatedImageUrl)?.generatedImageUrl
+        : undefined;
+
+      if (imageAttachments.length || latestGeneratedImage) {
+        const imageParts: Array<{ type: 'image_url'; image_url: { url: string } }> = [];
+        for (const img of imageAttachments.slice(0, 4)) {
+          const b64 = await imageToBase64(img.uri);
+          imageParts.push({ type: 'image_url', image_url: { url: b64 } });
+        }
+        if (!imageParts.length && latestGeneratedImage) {
+          imageParts.push({ type: 'image_url', image_url: { url: latestGeneratedImage } });
+        }
+        imagePartsForCurrentTurn = imageParts;
+
+        const textPrefix = fileAttachments.length
+          ? fileAttachments.map((f, idx) => {
+              const header = [
+                `附件${idx + 1} 文件名：${f.name}`,
+                f.mimeType ? `类型：${f.mimeType}` : '',
+              ].filter(Boolean).join('\n');
+              const body = f.textContent
+                ? `\n【内容节选】\n${f.textContent}`
+                : '\n【说明】该文件不是纯文本，当前无法直接读取正文。';
+              return `${header}${body}`;
+            }).join('\n\n')
+          : '';
+
         apiMessages.push({
           role: 'user',
           content: [
-            { type: 'text', text: content || '请描述这张图片' },
-            { type: 'image_url', image_url: { url: imageBase64 } },
+            {
+              type: 'text',
+              text:
+                `${content || (latestGeneratedImage ? '请描述刚才生成的图片' : '请描述这些图片')}`
+                + (textPrefix ? `\n\n【附件信息】\n${textPrefix}` : ''),
+            },
+            ...imageParts,
           ],
         });
-      } else if (type === 'file' && fileAttachment) {
-        const fileHeader = [
-          `文件名：${fileAttachment.name}`,
-          fileAttachment.mimeType ? `文件类型：${fileAttachment.mimeType}` : '',
-        ].filter(Boolean).join('\n');
+      } else if (fileAttachments.length) {
+        const mergedFileText = fileAttachments.map((f, idx) => {
+          const fileHeader = [
+            `文件${idx + 1}名：${f.name}`,
+            f.mimeType ? `文件类型：${f.mimeType}` : '',
+          ].filter(Boolean).join('\n');
 
-        const fileBody = fileAttachment.textContent
-          ? `\n\n【文件内容节选】\n${fileAttachment.textContent}`
-          : '\n\n【说明】该文件不是纯文本，当前无法直接读取正文。请先根据文件名和用户问题给出可行建议。';
+          const fileBody = f.textContent
+            ? `\n【文件内容节选】\n${f.textContent}`
+            : '\n【说明】该文件不是纯文本，当前无法直接读取正文。';
+          return `${fileHeader}${fileBody}`;
+        }).join('\n\n');
 
-        const mergedText = `${content || `请帮我处理这个文件`}\n\n【附件信息】\n${fileHeader}${fileBody}`;
+        const mergedText = `${content || `请帮我处理这些文件`}\n\n【附件信息】\n${mergedFileText}`;
         apiMessages.push({ role: 'user', content: mergedText });
       } else {
         apiMessages.push({ role: 'user', content });
@@ -392,8 +488,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       };
 
-      if (imageUri && settings.dashscopeApiKey) {
-        const imageQuestion = content || '请描述这张图片';
+      if ((imageAttachments.length || latestGeneratedImage) && settings.dashscopeApiKey) {
+        const imageQuestion =
+          content
+          || (imagePartsForCurrentTurn.length > 1 ? '请分别描述这些图片' : '请描述这张图片');
         const shouldSearchAfterVision =
           settings.agentEnabled
           && settings.webSearchEnabled
@@ -417,7 +515,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             role: 'user',
             content: [
               { type: 'text', text: imageQuestion },
-              { type: 'image_url', image_url: { url: imageBase64! } },
+              ...imagePartsForCurrentTurn,
             ],
           },
         ];
@@ -580,10 +678,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           ).catch((err) => console.warn('[RAG] 保存失败:', err?.message));
 
           // 多层 RAG 后处理（感性/理性/历史层更新）
-          getMessages(convId).then((allMessages) => {
-            postConversationUpdate(allMessages.slice(-6), settings)
-              .catch((err) => console.warn('[RAG] 多层更新失败:', err?.message));
-          }).catch((err) => console.warn('[RAG] 获取消息失败:', err?.message));
+          if (postProcessTimer) clearTimeout(postProcessTimer);
+          postProcessTimer = setTimeout(() => {
+            getMessages(convId).then((allMessages) => {
+              postConversationUpdate(allMessages.slice(-12), settings)
+                .catch((err) => console.warn('[RAG] 多层更新失败:', err?.message));
+            }).catch((err) => console.warn('[RAG] 获取消息失败:', err?.message));
+          }, 1200);
         }
 
         get().refreshRagStats().catch(() => {});

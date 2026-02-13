@@ -21,6 +21,7 @@ import { useAppStore } from '../src/store';
 import { MessageBubble } from '../src/components/MessageBubble';
 import { ChatInput } from '../src/components/ChatInput';
 import { ConversationDrawer } from '../src/components/ConversationDrawer';
+import { Typography } from '../src/constants/theme';
 import type { Message } from '../src/types';
 
 export default function ChatScreen() {
@@ -31,12 +32,16 @@ export default function ChatScreen() {
 
   const panResponder = useRef(
     PanResponder.create({
+      onStartShouldSetPanResponderCapture: (evt) => {
+        if (drawerVisible) return false;
+        return evt.nativeEvent.pageX < 48;
+      },
       onMoveShouldSetPanResponder: (_evt, gestureState) => {
         if (drawerVisible) return false;
-        return gestureState.moveX < 28 && gestureState.dx > 14 && Math.abs(gestureState.dy) < 18;
+        return gestureState.moveX < 48 && gestureState.dx > 10 && Math.abs(gestureState.dy) < 22;
       },
       onPanResponderRelease: (_evt, gestureState) => {
-        if (!drawerVisible && gestureState.dx > 58) {
+        if (!drawerVisible && (gestureState.dx > 46 || gestureState.vx > 0.65)) {
           setDrawerVisible(true);
         }
       },
@@ -207,18 +212,19 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
+    fontFamily: Typography.fontFamily,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 10,
-    borderBottomWidth: 0.5,
+    borderBottomWidth: 0.8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
   },
   headerBtn: {
     padding: 8,
@@ -228,6 +234,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    fontFamily: Typography.fontFamily,
   },
   headerRight: {
     flexDirection: 'row',
@@ -270,7 +277,7 @@ const styles = StyleSheet.create({
   },
   messageList: {
     paddingVertical: 12,
-    paddingBottom: 18,
+    paddingBottom: 24,
     paddingHorizontal: 2,
   },
   emptyContainer: {
@@ -290,16 +297,19 @@ const styles = StyleSheet.create({
   emptyLogoText: {
     fontSize: 28,
     fontWeight: '800',
+    fontFamily: Typography.fontFamily,
   },
   emptyTitle: {
     fontSize: 22,
     fontWeight: '700',
     marginBottom: 8,
+    fontFamily: Typography.fontFamily,
   },
   emptySubtitle: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
+    fontFamily: Typography.fontFamily,
   },
   capabilityRow: {
     flexDirection: 'row',
@@ -309,14 +319,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   capabilityChip: {
-    borderWidth: 0.5,
+    borderWidth: 0.8,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   capabilityText: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: Typography.fontFamily,
   },
   setupBtn: {
     marginTop: 24,
@@ -328,6 +339,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: Typography.fontFamily,
   },
   typingIndicator: {
     flexDirection: 'row',
@@ -338,6 +350,7 @@ const styles = StyleSheet.create({
   typingText: {
     marginLeft: 8,
     fontSize: 13,
+    fontFamily: Typography.fontFamily,
   },
   drawerOverlay: {
     flex: 1,
@@ -345,6 +358,6 @@ const styles = StyleSheet.create({
   },
   drawerBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(3,10,25,0.52)',
   },
 });

@@ -31,7 +31,7 @@ type AgentRoute = 'image_gen' | 'web_search' | 'time_query' | 'chat';
 
 async function optimizeImagePromptWithAI(userText: string, settings: AppSettings): Promise<string> {
   if (!settings.deepseekApiKey) {
-    return `高质量写实人像，主体特征：${userText}`;
+    return `高质量电影级画面，主体需求：${userText}。请补全场景环境、主体外观细节、构图层次、镜头参数、光线氛围、色彩风格与材质质感，保证主体清晰、细节丰富、画面统一，8K，超清，高保真。`;
   }
 
   try {
@@ -39,13 +39,15 @@ async function optimizeImagePromptWithAI(userText: string, settings: AppSettings
       {
         role: 'system',
         content:
-          '你是专业的文生图提示词工程师。请把用户输入改写为可直接用于图像模型的高质量提示词。'
+          '你是顶级文生图提示词导演 + 视觉设定师。请把用户输入升级为可直接用于图像模型的高质量提示词。'
           + '输出要求：\n'
           + '1) 只输出最终提示词，不要解释\n'
-          + '2) 补足画面构图、光线、镜头、材质细节\n'
-          + '3) 若用户描述不完整，做合理补全但不要偏离意图\n'
-          + '4) 使用中文，简洁有力（220字）\n'
-          + '5) 默认风格写实，质量优先\n',
+          + '2) 先在内部完成“联想扩展→场景补全→镜头语言→材质细节→风格统一→质量校验”，但不要输出中间过程\n'
+          + '3) 若用户描述过于简短，必须主动补全合理细节（人物外观、服饰、动作、背景、时间天气、光线、色彩、氛围）\n'
+          + '4) 明确给出构图与镜头信息（如全身/半身、近景/中景、焦段、景深、视角）\n'
+          + '5) 强化画质关键词：高细节、电影级光影、真实材质、超清\n'
+          + '6) 若用户未指定风格，默认“电影感写实风格”；如已指定风格，优先遵循用户\n'
+          + '7) 使用中文输出，控制在 420 字以内\n',
       },
       { role: 'user', content: userText.slice(0, 1500) },
     ];
@@ -71,7 +73,7 @@ async function optimizeImagePromptWithAI(userText: string, settings: AppSettings
     }, 'warning');
   }
 
-  return `高质量写实风格，主体需求：${userText}。构图完整，细节清晰，光线自然，面部与材质细节精致，4K，高保真。`;
+  return `电影感写实风格，主体需求：${userText}。请补全具体场景与叙事氛围，明确主体外观、服饰与动作，加入前中后景层次；使用中近景与低角度混合构图，光线为主光+轮廓光，强调皮肤与布料材质细节，色彩统一、细节锐利，8K，超清，高保真。`;
 }
 
 // ==================== 严格意图检测 ====================

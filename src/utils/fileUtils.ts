@@ -4,11 +4,21 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as MediaLibrary from 'expo-media-library';
 import type { ExportData } from '../types';
 
 /** 应用数据目录 */
 const DATA_DIR = FileSystem.documentDirectory + 'ai_helper/';
 const EXPORT_DIR = FileSystem.documentDirectory + 'exports/';
+
+function isMarkdownLikeFile(name?: string, mimeType?: string): boolean {
+  const lowerName = (name || '').toLowerCase();
+  const byExt = ['.md', '.markdown', '.txt'].some((ext) => lowerName.endsWith(ext));
+  const mt = (mimeType || '').toLowerCase();
+  const byMime = mt.startsWith('text/') || mt.includes('markdown') || mt.includes('plain');
+  return byExt || byMime;
+}
 
 /** 确保目录存在 */
 export async function ensureDirectory(dir: string): Promise<void> {
@@ -25,7 +35,7 @@ export async function pickMarkdownFile(): Promise<{
 } | null> {
   try {
     const result = await DocumentPicker.getDocumentAsync({
-      type: ['text/markdown', 'text/plain', 'text/*'],
+      type: '*/*',
       copyToCacheDirectory: true,
     });
 
@@ -33,12 +43,52 @@ export async function pickMarkdownFile(): Promise<{
       return null;
     }
 
-    const asset = result.assets[0];
+    const asset = result.assets.find((a) => isMarkdownLikeFile(a.name, a.mimeType));
+    if (!asset) return null;
     const content = await FileSystem.readAsStringAsync(asset.uri);
     return { name: asset.name, content };
   } catch (error) {
     console.error('文件选择失败:', error);
     return null;
+  }
+}
+
+/** 选择多个 Markdown 文件 */
+export async function pickMarkdownFiles(): Promise<Array<{
+  name: string;
+  content: string;
+}>> {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return [];
+    }
+
+    const validAssets = result.assets.filter((asset) =>
+      isMarkdownLikeFile(asset.name, asset.mimeType)
+    );
+    if (validAssets.length === 0) {
+      return [];
+    }
+
+    const files: Array<{ name: string; content: string }> = [];
+    for (const asset of validAssets) {
+      try {
+        const content = await FileSystem.readAsStringAsync(asset.uri);
+        files.push({ name: asset.name, content });
+      } catch (error) {
+        console.warn(`读取文件失败: ${asset.name}`, error);
+      }
+    }
+    return files;
+  } catch (error) {
+    console.error('多文件选择失败:', error);
+    return [];
   }
 }
 
@@ -70,6 +120,36 @@ export async function pickChatFile(): Promise<{
   } catch (error) {
     console.error('文件选择失败:', error);
     return null;
+  }
+}
+
+/** 选择多个聊天附件 */
+export async function pickChatFiles(): Promise<Array<{
+  uri: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+}>> {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return [];
+    }
+
+    return result.assets.map((asset) => ({
+      uri: asset.uri,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      size: asset.size,
+    }));
+  } catch (error) {
+    console.error('多文件选择失败:', error);
+    return [];
   }
 }
 
@@ -192,8 +272,66 @@ export async function saveImageLocally(
   }
 }
 
+/** 下载远程图片到本地目录（用于 AI 生成图片保存） */
+export async function downloadRemoteImage(
+  imageUrl: string,
+): Promise<string | null> {
+  try {
+    const imagesDir = DATA_DIR + 'downloads/';
+    await ensureDirectory(imagesDir);
+    const filename = `ai_img_${Date.now()}.jpg`;
+    const fileUri = imagesDir + filename;
+    await FileSystem.downloadAsync(imageUrl, fileUri);
+    return fileUri;
+  } catch (error) {
+    console.error('下载图片失败:', error);
+    return null;
+  }
+}
+
+/** 保存图片到系统相册（支持本地或远程 URL） */
+export async function saveImageToGallery(imageUri: string): Promise<boolean> {
+  try {
+    const perm = await MediaLibrary.requestPermissionsAsync();
+    if (perm.status !== 'granted') {
+      return false;
+    }
+
+    let localUri = imageUri;
+    if (/^https?:\/\//i.test(imageUri)) {
+      const downloaded = await downloadRemoteImage(imageUri);
+      if (!downloaded) return false;
+      localUri = downloaded;
+    }
+
+    await MediaLibrary.saveToLibraryAsync(localUri);
+    return true;
+  } catch (error) {
+    console.error('保存到相册失败:', error);
+    return false;
+  }
+}
+
 /** 将图片转为 Base64 */
 export async function imageToBase64(uri: string): Promise<string> {
+  try {
+    const manipulated = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 1280 } }],
+      {
+        compress: 0.72,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+
+    if (manipulated.base64) {
+      return `data:image/jpeg;base64,${manipulated.base64}`;
+    }
+  } catch (error) {
+    console.warn('图片压缩失败，回退原图编码:', error);
+  }
+
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });

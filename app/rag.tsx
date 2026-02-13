@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAppStore } from '../src/store';
 import { addMarkdownToRag, processUnembeddedChunks } from '../src/services/rag';
-import { pickMarkdownFile } from '../src/utils/fileUtils';
+import { pickMarkdownFiles } from '../src/utils/fileUtils';
 import { clearAllRagChunks } from '../src/services/database';
 
 export default function RagScreen() {
@@ -33,19 +33,23 @@ export default function RagScreen() {
       return;
     }
 
-    const file = await pickMarkdownFile();
-    if (!file) return;
+    const files = await pickMarkdownFiles();
+    if (!files.length) return;
 
     setUploading(true);
     try {
-      const chunks = await addMarkdownToRag(
-        file.content,
-        file.name,
-        settings.dashscopeApiKey,
-        settings.embeddingModel
-      );
+      let totalChunks = 0;
+      for (const file of files) {
+        const chunks = await addMarkdownToRag(
+          file.content,
+          file.name,
+          settings.dashscopeApiKey,
+          settings.embeddingModel
+        );
+        totalChunks += chunks;
+      }
       await refreshRagStats();
-      Alert.alert('上传成功', `文件 "${file.name}" 已分为 ${chunks} 个知识块并加入知识库`);
+      Alert.alert('上传成功', `已导入 ${files.length} 个文件，共 ${totalChunks} 个知识块`);
     } catch (error: any) {
       Alert.alert('上传失败', error.message);
     } finally {
@@ -155,7 +159,7 @@ export default function RagScreen() {
                   上传 Markdown 文件
                 </Text>
                 <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
-                  支持 .md / .txt 文件，自动分块并嵌入
+                  支持多选 .md / .txt，自动分块并嵌入
                 </Text>
               </View>
             </View>

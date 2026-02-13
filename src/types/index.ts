@@ -9,6 +9,13 @@ export interface Conversation {
 }
 
 /** 聊天消息 */
+export interface MessageAttachment {
+  kind: 'image' | 'file';
+  uri: string;
+  name: string;
+  mimeType?: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -19,6 +26,8 @@ export interface Message {
   fileUri?: string;
   fileName?: string;
   fileMimeType?: string;
+  /** 多附件（用于多图/多文件一轮发送） */
+  attachments?: MessageAttachment[];
   /** Agent 工具调用记录 */
   toolCalls?: ToolCallRecord[];
   /** 搜索结果（联网搜索时） */
@@ -129,6 +138,9 @@ export interface AppSettings {
   agentEnabled: boolean;
   // ── 🎨 通用配置 ──
   theme: 'light' | 'dark' | 'auto';
+  userDisplayName: string;
+  userAvatarEmoji: string;
+  userBubbleStyle: 'lavender' | 'mint' | 'rose' | 'slate';
   voiceEnabled: boolean;
   autoSaveToRag: boolean;
   systemPrompt: string;
@@ -151,6 +163,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   imageGenEnabled: true,
   agentEnabled: true,
   theme: 'auto',
+  userDisplayName: '我',
+  userAvatarEmoji: '🙂',
+  userBubbleStyle: 'lavender',
   voiceEnabled: true,
   autoSaveToRag: true,
   systemPrompt: '你是一个智能随身助手，请用中文回答用户的问题。你具有联网搜索能力（可查询实时新闻和最新信息）和图片生成能力（可根据描述创建图片）。你可以参考以下相关上下文来回答：',

@@ -16,8 +16,8 @@ sequenceDiagram
     participant DS as 🌐 DeepSeek API
     participant DB as 💾 SQLite
 
-    U->>UI: 输入文字 / 选择图片
-    UI->>S: sendMessage(content, imageUri?)
+    U->>UI: 输入文字 / 选择图片/文件(可多选)
+    UI->>S: sendMessage(content, attachments[])
     
     Note over S: 创建 userMsg + aiMsg(空)<br/>set isLoading=true<br/>启动 120s 安全超时
 
@@ -69,7 +69,7 @@ sequenceDiagram
         Note over S,RAG: 步骤5: 后台异步任务 (不阻塞 UI)
         S-->>S: generateTitle() (首条消息时)
         S-->>RAG: addChatToRag() (通用层)
-        S-->>RAG: postConversationUpdate() (感性/理性/历史层)
+        S-->>RAG: postConversationUpdate() (感性/理性/历史层, 防抖触发)
         S-->>S: refreshRagStats()
     end
 
@@ -146,17 +146,15 @@ graph TD
 
 ### 6.1 输入能力升级
 
-- `ChatInput` 从“仅图片”扩展为“图片 + 文件附件”。
+- `ChatInput` 从“单附件”扩展为“多图片 + 多文件附件”。
 - 文件附件会在本地保存，并尝试读取文本内容节选（txt/md/json/csv/log/xml/yaml 等）。
-- `sendMessage` 新增 `type='file'` 与 `fileAttachment` 参数，文件信息会注入 `apiMessages`。
+- `sendMessage` 新增 `attachments[]` 参数，统一承载混合附件并注入 `apiMessages`。
 
 ### 6.2 数据模型与持久化升级
 
-- `Message` 新增字段：`fileUri` / `fileName` / `fileMimeType`。
+- `Message` 新增字段：`attachments[]`（保留旧字段 `imageUri/fileUri` 兼容老数据）。
 - `messages` 表新增列（向后兼容迁移，`ALTER TABLE ... try/catch`）：
-    - `file_uri`
-    - `file_name`
-    - `file_mime_type`
+    - `attachments_json`
 
 ### 6.3 聊天页交互改进
 
@@ -197,4 +195,16 @@ graph TD
     - 统一 `reportError` 输出结构化日志
     - `toUserFriendlyMessage` 统一用户可读错误文案
     - 预留 Sentry 接入点（按需启用）
+
+## 9. 2026-02-13 补充（稳定性与体验）
+
+### 9.1 对话后处理降压
+
+- `postConversationUpdate` 改为延迟触发（防抖），并扩大上下文窗口到最近 12 条消息。
+- `ragSpecialist` 理性层更新频率下调，降低每轮会话结束后的瞬时计算压力。
+
+### 9.2 生成图片闭环能力
+
+- 消息气泡支持对 `generatedImageUrl` 一键保存到本地相册。
+- 用户提问“描述刚才生成的图片”时，Store 会尝试复用上一条生图 URL 进入图像理解链路。
 

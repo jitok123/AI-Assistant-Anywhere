@@ -379,9 +379,10 @@ export async function postConversationUpdate(
     addToHistoricalLayer(recentMessages, settings),
   ]);
 
-  // 理性层在对话累积一定轮次后更新（通过消息总数判断）
+  // 理性层更新成本较高：降频执行（至少 8 条消息且用户轮次为偶数）
   const totalMsgCount = recentMessages.length;
-  if (totalMsgCount >= 4) {
+  const userTurns = recentMessages.filter((m) => m.role === 'user').length;
+  if (totalMsgCount >= 8 && userTurns >= 4 && userTurns % 2 === 0) {
     await updateRationalLayer(recentMessages, settings).catch((err) =>
       console.error('理性层更新失败:', err),
     );

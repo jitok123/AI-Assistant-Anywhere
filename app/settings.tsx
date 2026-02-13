@@ -461,6 +461,67 @@ export default function SettingsScreen() {
               ))}
             </View>
           </Row>
+          <Row label="我的显示名称" hint="用于聊天中用户身份标签（默认：我）">
+            <TextInput
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border },
+              ]}
+              value={settings.userDisplayName}
+              onChangeText={(v) => updateSettings({ userDisplayName: v.trim() || '我' })}
+              placeholder="我"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={12}
+            />
+          </Row>
+          <Row label="我的头像" hint="支持 Emoji，显示在你的消息左侧圆形头像中">
+            <TextInput
+              style={[
+                styles.input,
+                styles.smallInput,
+                { color: colors.text, borderColor: colors.border },
+              ]}
+              value={settings.userAvatarEmoji}
+              onChangeText={(v) => updateSettings({ userAvatarEmoji: (v || '🙂').slice(0, 2) })}
+              placeholder="🙂"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={2}
+            />
+          </Row>
+          <Row label="我的气泡颜色" hint="选择你发送消息的气泡风格">
+            <View style={styles.themeRow}>
+              {([
+                { key: 'lavender', label: '薰衣草' },
+                { key: 'mint', label: '薄荷绿' },
+                { key: 'rose', label: '玫瑰粉' },
+                { key: 'slate', label: '雾霾蓝' },
+              ] as const).map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  onPress={() => updateSettings({ userBubbleStyle: item.key })}
+                  style={[
+                    styles.themeBtn,
+                    {
+                      backgroundColor:
+                        settings.userBubbleStyle === item.key
+                          ? colors.primary
+                          : colors.primaryLight,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: settings.userBubbleStyle === item.key ? '#FFF' : colors.text,
+                      fontSize: 13,
+                    }}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Row>
           <Row label="系统提示词" hint="自定义 AI 人设" isLast>
             <TextInput
               style={[

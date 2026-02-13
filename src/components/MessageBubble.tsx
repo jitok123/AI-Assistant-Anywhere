@@ -2,10 +2,13 @@
  * 聊天消息气泡组件
  */
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Modal, Pressable } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useTheme } from '../hooks/useTheme';
+import { useAppStore } from '../store';
+import { getUserBubbleColorByStyle, Typography } from '../constants/theme';
 import type { Message } from '../types';
+import { saveImageToGallery } from '../utils/fileUtils';
 
 interface Props {
   message: Message;
@@ -19,16 +22,20 @@ function stripMarkdownImages(text: string): string {
 
 export function MessageBubble({ message }: Props) {
   const colors = useTheme();
+  const { userDisplayName, userAvatarEmoji, userBubbleStyle, theme } = useAppStore((s) => s.settings);
   const isUser = message.role === 'user';
+  const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+  const isDark = theme === 'dark';
+  const userBubbleColor = getUserBubbleColorByStyle(userBubbleStyle, isDark);
 
   const bubbleStyle = isUser
-    ? [styles.bubble, styles.userBubble, { backgroundColor: colors.userBubble }]
+    ? [styles.bubble, styles.userBubble, { backgroundColor: userBubbleColor }]
     : [styles.bubble, styles.aiBubble, { backgroundColor: colors.aiBubble, borderColor: colors.border }];
 
   const textColor = isUser ? colors.userBubbleText : colors.aiBubbleText;
 
   const mdStyles = {
-    body: { color: textColor, fontSize: 15, lineHeight: 22 },
+    body: { color: textColor, fontSize: 15, lineHeight: 22, fontFamily: Typography.fontFamily },
     heading1: { color: textColor, fontSize: 20, fontWeight: '700' as const, marginBottom: 8 },
     heading2: { color: textColor, fontSize: 18, fontWeight: '600' as const, marginBottom: 6 },
     heading3: { color: textColor, fontSize: 16, fontWeight: '600' as const, marginBottom: 4 },
@@ -67,23 +74,79 @@ export function MessageBubble({ message }: Props) {
     ordered_list: { color: textColor },
   };
 
+  const handleDownloadImage = async (uri?: string) => {
+    if (!uri) return;
+    const ok = await saveImageToGallery(uri);
+    if (ok) {
+      Alert.alert('保存成功', '图片已保存到系统相册');
+    } else {
+      Alert.alert('保存失败', '请检查相册权限后重试');
+    }
+  };
+
+  const attachmentImageUris = (message.attachments || [])
+    .filter((att) => att.kind === 'image')
+    .map((att) => att.uri)
+    .filter(Boolean);
+
+  const legacyUris = [message.imageUri, message.generatedImageUrl].filter(
+    (u): u is string => !!u
+  );
+
+  const imageUris = Array.from(new Set([...attachmentImageUris, ...legacyUris]));
+
   return (
     <View style={[styles.container, isUser && styles.userContainer]}>
       {/* 角色标识 */}
       <View style={[styles.avatar, { backgroundColor: isUser ? colors.primary : colors.primaryLight }]}>
         <Text style={[styles.avatarText, { color: isUser ? '#FFF' : colors.primary }]}>
-          {isUser ? '你' : 'AI'}
+          {isUser ? (userAvatarEmoji || '🙂') : 'AI'}
         </Text>
       </View>
 
       <View style={[styles.contentWrap, isUser && styles.userContentWrap]}>
-        {/* 图片消息 (用户上传/AI生成) */}
-        {(message.imageUri || message.generatedImageUrl) && (
-          <Image
-            source={{ uri: message.imageUri || message.generatedImageUrl }}
-            style={styles.image}
-            resizeMode="cover"
-          />
+        {/* 图片消息（支持多图） */}
+        {imageUris.length > 0 && (
+          <View style={styles.imageGrid}>
+            {imageUris.map((uri, idx) => (
+              <View key={`${uri}-${idx}`} style={styles.imageItemWrap}>
+                <TouchableOpacity activeOpacity={0.85} onPress={() => setPreviewUri(uri)}>
+                  <Image
+                    source={{ uri }}
+                    style={styles.image}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.downloadBtn, { borderColor: colors.border }]}
+                  onPress={() => handleDownloadImage(uri)}
+                >
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Typography.fontFamily }}>⬇ 下载图片</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* 多附件展示 */}
+        {!!message.attachments?.some((att) => att.kind === 'file') && (
+          <View style={styles.multiAttachmentWrap}>
+            {message.attachments?.filter((att) => att.kind === 'file').map((att, idx) => (
+              <View key={`${att.uri}-${idx}`} style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.fileIcon, { color: colors.primary }]}>📎</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>
+                    {att.name}
+                  </Text>
+                  {!!att.mimeType && (
+                    <Text style={[styles.fileMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {att.mimeType}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
         )}
 
         {/* 文件消息 */}
@@ -113,7 +176,9 @@ export function MessageBubble({ message }: Props) {
               >
                 <Text style={[styles.toolTitle, { color: colors.textSecondary }]}>
                   {call.tool === 'web_search' ? '🔍 联网搜索' : 
-                   call.tool === 'image_gen' ? '🎨 图片生成' : '⚙️ 工具调用'}
+                   call.tool === 'image_gen' ? '🎨 图片生成' :
+                   call.tool === 'vision_analyze' ? '🖼️ 图片识别' :
+                   call.tool === 'time_now' ? '🕒 时间工具' : '⚙️ 工具调用'}
                 </Text>
                 <Text style={[styles.toolInput, { color: colors.textTertiary }]} numberOfLines={1}>
                   "{call.input}"
@@ -139,7 +204,7 @@ export function MessageBubble({ message }: Props) {
         <View style={bubbleStyle}>
           {message.content ? (
             isUser ? (
-              <Text style={{ color: textColor, fontSize: 15, lineHeight: 22 }}>
+              <Text style={{ color: textColor, fontSize: 15, lineHeight: 22, fontFamily: Typography.fontFamily }}>
                 {message.content}
               </Text>
             ) : (
@@ -148,11 +213,17 @@ export function MessageBubble({ message }: Props) {
               </Markdown>
             )
           ) : (
-            <Text style={{ color: colors.textTertiary, fontStyle: 'italic' }}>
+            <Text style={{ color: colors.textTertiary, fontStyle: 'italic', fontFamily: Typography.fontFamily }}>
               思考中...
             </Text>
           )}
         </View>
+
+        {isUser && (
+          <Text style={[styles.userName, { color: colors.textTertiary }]} numberOfLines={1}>
+            {userDisplayName || '我'}
+          </Text>
+        )}
 
         {/* 时间和类型标记 */}
         <Text style={[styles.meta, { color: colors.textTertiary }, isUser && styles.userMeta]}>
@@ -165,6 +236,23 @@ export function MessageBubble({ message }: Props) {
           })}
         </Text>
       </View>
+
+      <Modal
+        visible={!!previewUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewUri(null)}
+      >
+        <Pressable style={styles.previewBackdrop} onPress={() => setPreviewUri(null)}>
+          {previewUri && (
+            <Image
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -188,8 +276,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   avatarText: {
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
+    fontFamily: Typography.fontFamily,
   },
   contentWrap: {
     flex: 1,
@@ -203,22 +292,45 @@ const styles = StyleSheet.create({
   },
   bubble: {
     paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 18,
-    maxWidth: '96%',
+    paddingVertical: 12,
+    borderRadius: 20,
+    maxWidth: '95%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.09,
+    shadowRadius: 6,
+    elevation: 2,
   },
   userBubble: {
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 6,
   },
   aiBubble: {
-    borderBottomLeftRadius: 4,
-    borderWidth: 0.5,
+    borderBottomLeftRadius: 6,
+    borderWidth: 0.8,
   },
   image: {
     width: 200,
     height: 200,
     borderRadius: 12,
     marginBottom: 6,
+  },
+  imageGrid: {
+    marginBottom: 2,
+  },
+  imageItemWrap: {
+    marginBottom: 4,
+  },
+  downloadBtn: {
+    alignSelf: 'flex-start',
+    borderWidth: 0.5,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  multiAttachmentWrap: {
+    marginBottom: 6,
+    maxWidth: 280,
   },
   fileCard: {
     flexDirection: 'row',
@@ -237,15 +349,25 @@ const styles = StyleSheet.create({
   fileName: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: Typography.fontFamily,
   },
   fileMeta: {
     fontSize: 11,
     marginTop: 2,
+    fontFamily: Typography.fontFamily,
   },
   meta: {
     fontSize: 11,
-    marginTop: 3,
+    marginTop: 5,
     marginLeft: 4,
+    fontFamily: Typography.fontFamily,
+    letterSpacing: 0.2,
+  },
+  userName: {
+    fontSize: 11,
+    marginTop: 4,
+    marginRight: 4,
+    fontFamily: Typography.fontFamily,
   },
   userMeta: {
     marginLeft: 0,
@@ -253,40 +375,55 @@ const styles = StyleSheet.create({
   },
   // 工具调用样式
   toolsContainer: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
   toolCall: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 6,
-    borderRadius: 6,
-    borderWidth: 0.5,
-    marginBottom: 4,
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 0.8,
+    marginBottom: 6,
   },
   toolTitle: {
     fontSize: 11,
     fontWeight: 'bold',
     marginRight: 6,
+    fontFamily: Typography.fontFamily,
   },
   toolInput: {
     fontSize: 11,
     flex: 1,
+    fontFamily: Typography.fontFamily,
   },
   // 来源引用样式
   sourcesContainer: {
-    marginBottom: 8,
-    padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.02)',
-    borderRadius: 8,
+    marginBottom: 10,
+    padding: 10,
+    backgroundColor: 'rgba(90, 140, 255, 0.08)',
+    borderRadius: 10,
   },
   sourceLabel: {
     fontSize: 11,
     fontWeight: 'bold',
     marginBottom: 2,
+    fontFamily: Typography.fontFamily,
   },
   sourceLink: {
     fontSize: 11,
     marginBottom: 2,
     textDecorationLine: 'underline',
+    fontFamily: Typography.fontFamily,
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  previewImage: {
+    width: '100%',
+    height: '80%',
   },
 });

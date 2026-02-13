@@ -181,18 +181,6 @@ export const CHAT_MODEL_PRESETS: ChatModelPreset[] = [
     temperature: 0.7,
     maxTokens: 4096,
   },
-
-  // ─── 自定义/本地模型（Ollama 等）───
-  {
-    name: '本地 Ollama',
-    model: 'qwen2.5:7b',
-    baseUrl: 'http://localhost:11434/v1',
-    description: '本地 Ollama 部署，完全免费离线',
-    supportsStream: true,
-    supportsVision: false,
-    temperature: 0.7,
-    maxTokens: 4096,
-  },
 ];
 
 // ==================== 📊 Embedding 模型预设 ====================
