@@ -14,6 +14,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Image,
   Animated,
   Easing,
   Alert,
@@ -24,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAppStore } from '../src/store';
+import { APP_AVATAR } from '../src/constants/branding';
 import {
   startRecording,
   stopRecording,
@@ -260,8 +262,8 @@ export default function CallScreen() {
 
       {/* 顶部信息区 */}
       <View style={styles.topSection}>
-        <View style={[styles.aiAvatar, { backgroundColor: colors.primaryLight }]}>
-          <Text style={[styles.aiAvatarText, { color: colors.primary }]}>AI</Text>
+        <View style={[styles.aiAvatar, { borderColor: colors.border }]}>
+          <Image source={APP_AVATAR} style={styles.aiAvatarImage} />
         </View>
         <Text style={[styles.aiName, { color: colors.text }]}>AI 助手</Text>
         {isInCall && (
@@ -427,13 +429,13 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
     marginBottom: 12,
   },
-  aiAvatarText: {
-    fontSize: 28,
-    fontWeight: '800',
+  aiAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   aiName: {
     fontSize: 20,

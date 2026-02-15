@@ -211,6 +211,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       await setSetting('imageGenEnabled', 'true');
       await setSetting('_agentMigrationV1', 'done');
     }
+
+    // 迁移：RAG 双路 embedding 模型默认值
+    if (!settings.ragTextEmbeddingModel) {
+      settings.ragTextEmbeddingModel = settings.embeddingModel || 'text-embedding-v3';
+      await setSetting('ragTextEmbeddingModel', settings.ragTextEmbeddingModel);
+    }
+    if (!settings.ragNonTextEmbeddingModel) {
+      settings.ragNonTextEmbeddingModel = 'qwen3-vl-embedding';
+      await setSetting('ragNonTextEmbeddingModel', settings.ragNonTextEmbeddingModel);
+    }
     set({ settings });
   },
 

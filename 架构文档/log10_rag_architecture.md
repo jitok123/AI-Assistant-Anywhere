@@ -101,6 +101,34 @@ flowchart TD
 
 ---
 
+## 3.1 多格式文件入库流程（rag.tsx + knowledgeIngest.ts）
+
+```mermaid
+flowchart TD
+    PICK["选择文件\n文本 / PDF / 图片"] --> KIND{"文件类型判断"}
+    KIND -->|文本| TXT["readTextFileSafely\n读取正文"]
+    KIND -->|PDF| PDF["readPdfTextSafely\n轻量解析 BT/ET 文本块"]
+    KIND -->|图片| IMG["qwen-vl-max 视觉提取\nOCR + 关键信息摘要"]
+
+    TXT --> MERGE["补充来源元信息\n文件名 + MIME"]
+    PDF --> MERGE
+    IMG --> MERGE
+
+    MERGE --> CHUNK{"分块策略"}
+    CHUNK -->|Markdown| MDCHUNK["chunkMarkdown"]
+    CHUNK -->|其他文本| TXCHUNK["chunkText"]
+    MDCHUNK --> EMB["text-embedding-v3 批量向量化"]
+    TXCHUNK --> EMB
+    EMB --> DB["写入 rag chunks\nsource=upload, layer=general"]
+```
+
+说明：
+- 批量导入按文件逐个处理，单文件失败不会阻断整体导入。
+- PDF 为轻量文本提取，扫描版 PDF 可能无正文；此时仅保留元信息并给出提示。
+- 图片入库依赖 DashScope Key，通过视觉模型提取文本后再进行 embedding。
+
+---
+
 ## 4. 向量检索详解
 
 ```mermaid

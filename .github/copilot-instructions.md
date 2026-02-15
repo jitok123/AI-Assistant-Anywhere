@@ -32,7 +32,7 @@
 - `sendMessage` supports mixed attachments in one turn (`attachments`), including multiple images and files.
 - Persist attachment metadata via `Message.attachments` and SQLite `messages.attachments_json`; keep backward compatibility with legacy single-file fields.
 - UI input state for pending files is array-based (`ChatInput`), and rendering should iterate `attachments` first, then gracefully fall back to legacy `imageUri/fileUri`.
-- `app/rag.tsx` supports multi-select markdown import; bulk ingestion should continue even if one file fails.
+- `app/rag.tsx` supports multi-select ingestion for text / pdf / image files; bulk ingestion should continue even if one file fails.
 - Generated image cards should provide local save/download action from `MessageBubble`.
 
 ## RAG architecture and memory policy

@@ -60,6 +60,7 @@ export async function initDatabase(): Promise<void> {
       source_id TEXT,
       content TEXT NOT NULL,
       embedding TEXT,
+      embedding_model TEXT,
       layer TEXT DEFAULT 'general',
       created_at INTEGER NOT NULL
     );
@@ -79,6 +80,11 @@ export async function initDatabase(): Promise<void> {
     await database.runAsync(
       "UPDATE rag_chunks SET layer = 'general' WHERE layer IS NULL"
     );
+  } catch {}
+  try {
+    await database.execAsync(`
+      ALTER TABLE rag_chunks ADD COLUMN embedding_model TEXT;
+    `);
   } catch {}
 
   // 迁移：为旧 messages 表添加新字段
@@ -290,8 +296,8 @@ export async function addRagChunk(chunk: RagChunk): Promise<void> {
   const database = getDatabase();
   const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
   await database.runAsync(
-    'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.layer || 'general', chunk.createdAt]
+    'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, embedding_model, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.embeddingModel || null, chunk.layer || 'general', chunk.createdAt]
   );
 }
 
@@ -301,8 +307,8 @@ export async function addRagChunks(chunks: RagChunk[]): Promise<void> {
   for (const chunk of chunks) {
     const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
     await database.runAsync(
-      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.layer || 'general', chunk.createdAt]
+      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, embedding_model, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.embeddingModel || null, chunk.layer || 'general', chunk.createdAt]
     );
   }
 }
@@ -311,10 +317,10 @@ export async function addRagChunks(chunks: RagChunk[]): Promise<void> {
 export async function getAllRagChunksWithEmbeddings(
   layer?: RagLayer
 ): Promise<
-  Array<{ id: string; content: string; embedding: number[]; layer: RagLayer }>
+  Array<{ id: string; content: string; embedding: number[]; layer: RagLayer; embeddingModel?: string }>
 > {
   const database = getDatabase();
-  let query = 'SELECT id, content, embedding, layer FROM rag_chunks WHERE embedding IS NOT NULL';
+  let query = 'SELECT id, content, embedding, layer, embedding_model FROM rag_chunks WHERE embedding IS NOT NULL';
   const params: any[] = [];
   if (layer) {
     query += ' AND layer = ?';
@@ -326,6 +332,7 @@ export async function getAllRagChunksWithEmbeddings(
     content: row.content,
     embedding: JSON.parse(row.embedding),
     layer: row.layer || 'general',
+    embeddingModel: row.embedding_model || undefined,
   }));
 }
 
@@ -341,6 +348,7 @@ export async function getChunksWithoutEmbeddings(): Promise<RagChunk[]> {
     sourceId: row.source_id,
     content: row.content,
     embedding: null,
+    embeddingModel: row.embedding_model || undefined,
     layer: row.layer || 'general',
     createdAt: row.created_at,
   }));
@@ -359,6 +367,7 @@ export async function getRagChunksByLayer(layer: RagLayer): Promise<RagChunk[]> 
     sourceId: row.source_id,
     content: row.content,
     embedding: row.embedding ? JSON.parse(row.embedding) : null,
+    embeddingModel: row.embedding_model || undefined,
     layer: row.layer,
     createdAt: row.created_at,
   }));
@@ -388,8 +397,8 @@ export async function replaceRagLayer(
   for (const chunk of chunks) {
     const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
     await database.runAsync(
-      'INSERT INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, layer, chunk.createdAt]
+      'INSERT INTO rag_chunks (id, source, source_id, content, embedding, embedding_model, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.embeddingModel || null, layer, chunk.createdAt]
     );
   }
 }
@@ -397,12 +406,13 @@ export async function replaceRagLayer(
 /** 更新 RAG 块的 embedding */
 export async function updateChunkEmbedding(
   id: string,
-  embedding: number[]
+  embedding: number[],
+  embeddingModel?: string,
 ): Promise<void> {
   const database = getDatabase();
   await database.runAsync(
-    'UPDATE rag_chunks SET embedding = ? WHERE id = ?',
-    [JSON.stringify(embedding), id]
+    'UPDATE rag_chunks SET embedding = ?, embedding_model = COALESCE(?, embedding_model) WHERE id = ?',
+    [JSON.stringify(embedding), embeddingModel || null, id]
   );
 }
 
@@ -524,6 +534,7 @@ export async function exportAllData(): Promise<{
     sourceId: row.source_id,
     content: row.content,
     embedding: row.embedding ? JSON.parse(row.embedding) : null,
+    embeddingModel: row.embedding_model || undefined,
     layer: row.layer || 'general',
     createdAt: row.created_at,
   }));
@@ -567,8 +578,8 @@ export async function importAllData(data: {
   for (const chunk of data.ragChunks) {
     const embeddingStr = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
     await database.runAsync(
-      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.layer || 'general', chunk.createdAt]
+      'INSERT OR REPLACE INTO rag_chunks (id, source, source_id, content, embedding, embedding_model, layer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [chunk.id, chunk.source, chunk.sourceId, chunk.content, embeddingStr, chunk.embeddingModel || null, chunk.layer || 'general', chunk.createdAt]
     );
   }
 }

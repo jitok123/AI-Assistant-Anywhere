@@ -12,12 +12,181 @@ import type { ExportData } from '../types';
 const DATA_DIR = FileSystem.documentDirectory + 'ai_helper/';
 const EXPORT_DIR = FileSystem.documentDirectory + 'exports/';
 
+export type KnowledgeFileKind = 'text' | 'pdf' | 'image' | 'unsupported';
+
+export interface KnowledgeUploadFile {
+  uri: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  kind: KnowledgeFileKind;
+}
+
+const TEXT_FILE_EXTENSIONS = [
+  '.md', '.markdown', '.txt', '.csv', '.json', '.log', '.xml', '.yaml', '.yml', '.html', '.htm', '.rtf'
+];
+const IMAGE_FILE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif', '.bmp'];
+
 function isMarkdownLikeFile(name?: string, mimeType?: string): boolean {
   const lowerName = (name || '').toLowerCase();
   const byExt = ['.md', '.markdown', '.txt'].some((ext) => lowerName.endsWith(ext));
   const mt = (mimeType || '').toLowerCase();
   const byMime = mt.startsWith('text/') || mt.includes('markdown') || mt.includes('plain');
   return byExt || byMime;
+}
+
+function getKnowledgeFileKind(name?: string, mimeType?: string): KnowledgeFileKind {
+  const lowerName = (name || '').toLowerCase();
+  const mt = (mimeType || '').toLowerCase();
+
+  const isTextByExt = TEXT_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+  const isTextByMime = mt.startsWith('text/') || mt.includes('json') || mt.includes('xml') || mt.includes('csv');
+  if (isTextByExt || isTextByMime) return 'text';
+
+  if (lowerName.endsWith('.pdf') || mt.includes('pdf')) return 'pdf';
+
+  const isImageByExt = IMAGE_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+  const isImageByMime = mt.startsWith('image/');
+  if (isImageByExt || isImageByMime) return 'image';
+
+  return 'unsupported';
+}
+
+function decodeBase64ToLatin1(base64: string, maxOutputChars: number = 3_200_000): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const cleaned = (base64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
+  let output = '';
+
+  for (let i = 0; i < cleaned.length; i += 4) {
+    const enc1 = alphabet.indexOf(cleaned.charAt(i));
+    const enc2 = alphabet.indexOf(cleaned.charAt(i + 1));
+    const enc3 = alphabet.indexOf(cleaned.charAt(i + 2));
+    const enc4 = alphabet.indexOf(cleaned.charAt(i + 3));
+
+    if (enc1 < 0 || enc2 < 0) continue;
+
+    const chr1 = (enc1 << 2) | (enc2 >> 4);
+    output += String.fromCharCode(chr1);
+
+    if (enc3 !== 64 && enc3 >= 0) {
+      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+      output += String.fromCharCode(chr2);
+    }
+    if (enc4 !== 64 && enc4 >= 0) {
+      const chr3 = ((enc3 & 3) << 6) | enc4;
+      output += String.fromCharCode(chr3);
+    }
+
+    if (output.length >= maxOutputChars) {
+      return output.slice(0, maxOutputChars);
+    }
+  }
+
+  return output;
+}
+
+function extractPdfStrings(segment: string): string[] {
+  const strings: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let current = '';
+
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i];
+
+    if (!inString) {
+      if (ch === '(') {
+        inString = true;
+        depth = 1;
+        current = '';
+      }
+      continue;
+    }
+
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '(') {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        strings.push(current);
+        inString = false;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    current += ch;
+  }
+
+  return strings;
+}
+
+function decodePdfEscapes(text: string): string {
+  return text
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\b/g, '\b')
+    .replace(/\\f/g, '\f')
+    .replace(/\\\(/g, '(')
+    .replace(/\\\)/g, ')')
+    .replace(/\\\\/g, '\\')
+    .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
+}
+
+function extractTextFromPdfBinary(binary: string): string {
+  const btBlocks = binary.match(/BT[\s\S]*?ET/g) || [];
+  const textParts: string[] = [];
+
+  for (const block of btBlocks) {
+    const strings = extractPdfStrings(block);
+    for (const s of strings) {
+      const decoded = decodePdfEscapes(s).trim();
+      if (decoded) textParts.push(decoded);
+    }
+  }
+
+  if (textParts.length > 0) {
+    return textParts.join('\n');
+  }
+
+  const fallback = binary.match(/[\x20-\x7E\u4e00-\u9fa5]{5,}/g) || [];
+  return fallback.join('\n');
+}
+
+/** 轻量提取 PDF 文本（适用于文本型 PDF；扫描件建议转图片 OCR） */
+export async function readPdfTextSafely(uri: string, maxChars: number = 20000): Promise<string> {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const binary = decodeBase64ToLatin1(base64, 3_200_000);
+    const raw = extractTextFromPdfBinary(binary)
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return raw.slice(0, maxChars);
+  } catch (error) {
+    console.warn('读取 PDF 失败:', error);
+    return '';
+  }
 }
 
 /** 确保目录存在 */
@@ -88,6 +257,34 @@ export async function pickMarkdownFiles(): Promise<Array<{
     return files;
   } catch (error) {
     console.error('多文件选择失败:', error);
+    return [];
+  }
+}
+
+/** 选择知识库文件（支持文本 / PDF / 图片） */
+export async function pickKnowledgeFiles(): Promise<KnowledgeUploadFile[]> {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return [];
+    }
+
+    return result.assets
+      .map((asset) => ({
+        uri: asset.uri,
+        name: asset.name,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        kind: getKnowledgeFileKind(asset.name, asset.mimeType),
+      }))
+      .filter((f) => f.kind !== 'unsupported');
+  } catch (error) {
+    console.error('知识库文件选择失败:', error);
     return [];
   }
 }
@@ -182,8 +379,7 @@ export async function readTextFileSafely(
 ): Promise<string> {
   try {
     const lowerName = fileName.toLowerCase();
-    const textExt = ['.txt', '.md', '.markdown', '.json', '.csv', '.log', '.xml', '.yaml', '.yml'];
-    const isTextByExt = textExt.some((ext) => lowerName.endsWith(ext));
+    const isTextByExt = TEXT_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
     const isTextByMime = !!mimeType && (
       mimeType.startsWith('text/')
       || mimeType.includes('json')

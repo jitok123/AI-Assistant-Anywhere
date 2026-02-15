@@ -7,6 +7,7 @@ import Markdown from 'react-native-markdown-display';
 import { useTheme } from '../hooks/useTheme';
 import { useAppStore } from '../store';
 import { getUserBubbleColorByStyle, Typography } from '../constants/theme';
+import { APP_AVATAR } from '../constants/branding';
 import type { Message } from '../types';
 import { saveImageToGallery } from '../utils/fileUtils';
 
@@ -35,33 +36,33 @@ function MessageBubbleImpl({ message }: Props) {
   const textColor = isUser ? colors.userBubbleText : colors.aiBubbleText;
 
   const mdStyles = {
-    body: { color: textColor, fontSize: 15, lineHeight: 24, fontFamily: Typography.fontFamily },
-    heading1: { color: textColor, fontSize: 21, fontWeight: '700' as const, marginTop: 4, marginBottom: 10, lineHeight: 30 },
-    heading2: { color: textColor, fontSize: 19, fontWeight: '700' as const, marginTop: 4, marginBottom: 9, lineHeight: 28 },
-    heading3: { color: textColor, fontSize: 17, fontWeight: '600' as const, marginTop: 3, marginBottom: 8, lineHeight: 26 },
-    paragraph: { color: textColor, marginBottom: 12, lineHeight: 24 },
+    body: { color: textColor, fontSize: 16, lineHeight: 29, fontFamily: Typography.fontFamily, letterSpacing: 0.2 },
+    heading1: { color: textColor, fontSize: 22, fontWeight: '700' as const, marginTop: 6, marginBottom: 12, lineHeight: 32 },
+    heading2: { color: textColor, fontSize: 20, fontWeight: '700' as const, marginTop: 5, marginBottom: 11, lineHeight: 30 },
+    heading3: { color: textColor, fontSize: 18, fontWeight: '600' as const, marginTop: 4, marginBottom: 10, lineHeight: 28 },
+    paragraph: { color: textColor, marginBottom: 14, lineHeight: 29 },
     link: { color: colors.primary },
     code_inline: {
       backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : colors.primaryLight,
       color: textColor,
       paddingHorizontal: 4,
-      borderRadius: 3,
-      fontSize: 13,
+      borderRadius: 5,
+      fontSize: 14,
     },
     code_block: {
       backgroundColor: isUser ? 'rgba(0,0,0,0.2)' : colors.primaryLight,
       color: textColor,
-      padding: 10,
-      borderRadius: 8,
-      fontSize: 13,
+      padding: 12,
+      borderRadius: 10,
+      fontSize: 14,
       fontFamily: 'monospace',
     },
     fence: {
       backgroundColor: isUser ? 'rgba(0,0,0,0.2)' : colors.primaryLight,
       color: textColor,
-      padding: 10,
-      borderRadius: 8,
-      fontSize: 13,
+      padding: 12,
+      borderRadius: 10,
+      fontSize: 14,
     },
     blockquote: {
       borderLeftColor: colors.primary,
@@ -73,7 +74,7 @@ function MessageBubbleImpl({ message }: Props) {
       borderTopRightRadius: 8,
       borderBottomRightRadius: 8,
     },
-    list_item: { color: textColor, lineHeight: 24, marginBottom: 4 },
+    list_item: { color: textColor, lineHeight: 29, marginBottom: 6 },
     bullet_list: { color: textColor },
     ordered_list: { color: textColor },
     hr: { backgroundColor: colors.border, height: 1, marginVertical: 10 },
@@ -103,10 +104,14 @@ function MessageBubbleImpl({ message }: Props) {
   return (
     <View style={[styles.container, isUser && styles.userContainer]}>
       {/* 角色标识 */}
-      <View style={[styles.avatar, { backgroundColor: isUser ? colors.primary : colors.primaryLight }]}>
-        <Text style={[styles.avatarText, { color: isUser ? '#FFF' : colors.primary }]}>
-          {isUser ? (userAvatarEmoji || '🙂') : 'AI'}
-        </Text>
+      <View style={[styles.avatar, { borderColor: isUser ? colors.primary : colors.border }]}>
+        {isUser ? (
+          <Text style={[styles.avatarText, { color: colors.primary }]}>
+            {(userAvatarEmoji || '🙂').slice(0, 2)}
+          </Text>
+        ) : (
+          <Image source={APP_AVATAR} style={styles.avatarImage} />
+        )}
       </View>
 
       <View style={[styles.contentWrap, isUser && styles.userContentWrap]}>
@@ -209,7 +214,7 @@ function MessageBubbleImpl({ message }: Props) {
         <View style={bubbleStyle}>
           {message.content ? (
             isUser ? (
-              <Text style={{ color: textColor, fontSize: 15, lineHeight: 24, fontFamily: Typography.fontFamily }}>
+              <Text style={{ color: textColor, fontSize: 16, lineHeight: 29, fontFamily: Typography.fontFamily, letterSpacing: 0.2 }}>
                 {message.content}
               </Text>
             ) : (
@@ -278,6 +283,8 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
@@ -286,6 +293,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     fontFamily: Typography.fontFamily,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   contentWrap: {
     flex: 1,
@@ -299,8 +310,8 @@ const styles = StyleSheet.create({
   },
   bubble: {
     paddingHorizontal: 16,
-    paddingVertical: 13,
-    borderRadius: 20,
+    paddingVertical: 14,
+    borderRadius: 18,
     maxWidth: '98%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

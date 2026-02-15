@@ -5,6 +5,7 @@ import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   FlatList,
   TouchableOpacity,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useTheme } from '../hooks/useTheme';
 import { useAppStore } from '../store';
+import { APP_AVATAR } from '../constants/branding';
 
 interface Props {
   onClose: () => void;
@@ -127,7 +129,10 @@ export function ConversationDrawer({ onClose }: Props) {
     <View style={[styles.container, { backgroundColor: colors.sidebarBg }]}>
       {/* 头部 */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.text }]}>对话列表</Text>
+        <View style={styles.headerLeft}>
+          <Image source={APP_AVATAR} style={styles.headerAvatar} />
+          <Text style={[styles.title, { color: colors.text }]}>对话列表</Text>
+        </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={toggleEditMode} style={styles.headerActionBtn}>
             <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>
@@ -287,6 +292,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
   headerActionBtn: {
     paddingHorizontal: 6,

@@ -13,6 +13,7 @@ import {
   Alert,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -26,6 +27,7 @@ import {
   type ChatModelPreset,
   type EmbeddingModelPreset,
 } from '../src/config/models';
+import { APP_AVATAR } from '../src/constants/branding';
 
 export default function SettingsScreen() {
   const colors = useTheme();
@@ -37,6 +39,7 @@ export default function SettingsScreen() {
   const [showDashscopeKey, setShowDashscopeKey] = useState(false);
   const [chatModelPickerVisible, setChatModelPickerVisible] = useState(false);
   const [embeddingModelPickerVisible, setEmbeddingModelPickerVisible] = useState(false);
+  const [embeddingTarget, setEmbeddingTarget] = useState<'single' | 'text' | 'non_text'>('single');
 
   // 找到当前选中的预设
   const currentChatPreset = CHAT_MODEL_PRESETS.find(
@@ -123,7 +126,16 @@ export default function SettingsScreen() {
 
   /** 选择 Embedding 模型预设 */
   const selectEmbeddingModel = (preset: EmbeddingModelPreset) => {
-    updateSettings({ embeddingModel: preset.model });
+    if (embeddingTarget === 'text') {
+      updateSettings({ ragTextEmbeddingModel: preset.model });
+    } else if (embeddingTarget === 'non_text') {
+      updateSettings({ ragNonTextEmbeddingModel: preset.model });
+    } else {
+      updateSettings({
+        embeddingModel: preset.model,
+        ragTextEmbeddingModel: preset.model,
+      });
+    }
     setEmbeddingModelPickerVisible(false);
   };
 
@@ -346,16 +358,53 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </Row>
-          <Row label="Embedding 模型" isLast>
+          <Row label="统一 Embedding 模型（兼容）" hint="旧字段，建议使用下方按类型配置">
             <TouchableOpacity
               style={[
                 styles.embeddingSelector,
                 { borderColor: colors.border, backgroundColor: colors.primaryLight },
               ]}
-              onPress={() => setEmbeddingModelPickerVisible(true)}
+              onPress={() => {
+                setEmbeddingTarget('single');
+                setEmbeddingModelPickerVisible(true);
+              }}
             >
               <Text style={[{ color: colors.text, fontSize: 14 }]}>
                 {settings.embeddingModel}
+              </Text>
+              <Text style={{ color: colors.textTertiary }}> ▼</Text>
+            </TouchableOpacity>
+          </Row>
+          <Row label="文本入库模型" hint="纯文本默认建议 text-embedding-v3">
+            <TouchableOpacity
+              style={[
+                styles.embeddingSelector,
+                { borderColor: colors.border, backgroundColor: colors.primaryLight },
+              ]}
+              onPress={() => {
+                setEmbeddingTarget('text');
+                setEmbeddingModelPickerVisible(true);
+              }}
+            >
+              <Text style={[{ color: colors.text, fontSize: 14 }]}>
+                {settings.ragTextEmbeddingModel || settings.embeddingModel}
+              </Text>
+              <Text style={{ color: colors.textTertiary }}> ▼</Text>
+            </TouchableOpacity>
+          </Row>
+          <Row label="非文本入库模型" hint="图片/PDF默认建议 qwen3-vl-embedding" isLast>
+            <TouchableOpacity
+              style={[
+                styles.embeddingSelector,
+                { borderColor: colors.border, backgroundColor: colors.primaryLight },
+              ]}
+              onPress={() => {
+                setEmbeddingTarget('non_text');
+                setEmbeddingModelPickerVisible(true);
+              }}
+            >
+              <Text style={[{ color: colors.text, fontSize: 14 }]}>
+                {settings.ragNonTextEmbeddingModel || 'qwen3-vl-embedding'}
               </Text>
               <Text style={{ color: colors.textTertiary }}> ▼</Text>
             </TouchableOpacity>
@@ -474,7 +523,7 @@ export default function SettingsScreen() {
               maxLength={12}
             />
           </Row>
-          <Row label="我的头像" hint="支持 Emoji，显示在你的消息左侧圆形头像中">
+          <Row label="我的头像" hint="支持 Emoji，显示在你发送消息的头像处">
             <TextInput
               style={[
                 styles.input,
@@ -487,6 +536,9 @@ export default function SettingsScreen() {
               placeholderTextColor={colors.textTertiary}
               maxLength={2}
             />
+          </Row>
+          <Row label="AI 助手头像" hint="全局统一使用当前品牌头像（聊天/知识库/通话/侧栏）">
+            <Image source={APP_AVATAR} style={[styles.brandAvatarPreview, { borderColor: colors.border }]} />
           </Row>
           <Row label="我的气泡颜色" hint="选择你发送消息的气泡风格">
             <View style={styles.themeRow}>
@@ -745,7 +797,12 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
             {EMBEDDING_MODEL_PRESETS.map((preset) => {
-              const isActive = preset.model === settings.embeddingModel;
+              const currentModel = embeddingTarget === 'text'
+                ? (settings.ragTextEmbeddingModel || settings.embeddingModel)
+                : embeddingTarget === 'non_text'
+                  ? (settings.ragNonTextEmbeddingModel || 'qwen3-vl-embedding')
+                  : settings.embeddingModel;
+              const isActive = preset.model === currentModel;
               return (
                 <TouchableOpacity
                   key={preset.model}
@@ -835,6 +892,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   smallInput: { width: 90 },
+  brandAvatarPreview: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
   multilineInput: { height: 80, textAlignVertical: 'top' },
   keyRow: { flexDirection: 'row', alignItems: 'center' },
   eyeBtn: { padding: 8, marginLeft: 4 },

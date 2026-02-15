@@ -8,6 +8,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
+  Image,
   Modal,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -22,6 +23,7 @@ import { MessageBubble } from '../src/components/MessageBubble';
 import { ChatInput } from '../src/components/ChatInput';
 import { ConversationDrawer } from '../src/components/ConversationDrawer';
 import { Typography } from '../src/constants/theme';
+import { APP_AVATAR } from '../src/constants/branding';
 
 export default function ChatScreen() {
   const colors = useTheme();
@@ -144,7 +146,7 @@ export default function ChatScreen() {
             {messages.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <View style={[styles.emptyLogo, { backgroundColor: colors.primaryLight }]}>
-                  <Text style={[styles.emptyLogoText, { color: colors.primary }]}>AI</Text>
+                  <Image source={APP_AVATAR} style={styles.emptyLogoImage} />
                 </View>
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>
                   新对话
@@ -271,7 +273,7 @@ export default function ChatScreen() {
       {messages.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={[styles.emptyLogo, { backgroundColor: colors.primaryLight }]}>
-            <Text style={[styles.emptyLogoText, { color: colors.primary }]}>AI</Text>
+              <Image source={APP_AVATAR} style={styles.emptyLogoImage} />
           </View>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
             新对话
@@ -456,6 +458,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     fontFamily: Typography.fontFamily,
+  },
+  emptyLogoImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
   },
   emptyTitle: {
     fontSize: 22,

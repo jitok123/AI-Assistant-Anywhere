@@ -10,14 +10,21 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAppStore } from '../src/store';
-import { addMarkdownToRag, processUnembeddedChunks } from '../src/services/rag';
-import { pickMarkdownFiles } from '../src/utils/fileUtils';
+import { APP_AVATAR } from '../src/constants/branding';
+import {
+  addMarkdownToRag,
+  processUnembeddedChunks,
+  resolveRagEmbeddingModel,
+} from '../src/services/rag';
+import { pickKnowledgeFiles } from '../src/utils/fileUtils';
 import { clearAllRagChunks } from '../src/services/database';
+import { extractKnowledgeText } from '../src/services/knowledgeIngest';
 
 export default function RagScreen() {
   const colors = useTheme();
@@ -26,30 +33,63 @@ export default function RagScreen() {
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // 上传 Markdown 文件
-  const handleUploadMarkdown = useCallback(async () => {
+  // 上传知识库文件（文本 / PDF / 图片）
+  const handleUploadKnowledge = useCallback(async () => {
     if (!settings.dashscopeApiKey) {
       Alert.alert('提示', '请先在设置中配置阿里云 DashScope API Key');
       return;
     }
 
-    const files = await pickMarkdownFiles();
+    const files = await pickKnowledgeFiles();
     if (!files.length) return;
 
     setUploading(true);
     try {
       let totalChunks = 0;
+      let successCount = 0;
+      const failedFiles: string[] = [];
+      const warningNotes: string[] = [];
+
       for (const file of files) {
-        const chunks = await addMarkdownToRag(
-          file.content,
-          file.name,
-          settings.dashscopeApiKey,
-          settings.embeddingModel
-        );
-        totalChunks += chunks;
+        try {
+          const extracted = await extractKnowledgeText(file, settings.dashscopeApiKey);
+          if (!extracted.text.trim()) {
+            failedFiles.push(file.name);
+            continue;
+          }
+
+          const chunks = await addMarkdownToRag(
+            extracted.text,
+            file.name,
+            settings.dashscopeApiKey,
+            extracted.sourceKind === 'text'
+              ? resolveRagEmbeddingModel(settings, 'text')
+              : resolveRagEmbeddingModel(settings, 'non_text'),
+            extracted.sourceKind === 'text' ? 'text' : 'non_text',
+          );
+          totalChunks += chunks;
+          successCount += 1;
+
+          if (extracted.warnings.length > 0) {
+            warningNotes.push(`${file.name}: ${extracted.warnings.join('；')}`);
+          }
+        } catch (error) {
+          console.warn('[RAG] 文件入库失败:', file.name, error);
+          failedFiles.push(file.name);
+        }
       }
+
       await refreshRagStats();
-      Alert.alert('上传成功', `已导入 ${files.length} 个文件，共 ${totalChunks} 个知识块`);
+
+      let message = `已导入 ${successCount}/${files.length} 个文件，共 ${totalChunks} 个知识块。`;
+      if (failedFiles.length > 0) {
+        message += `\n\n未成功：${failedFiles.join('、')}`;
+      }
+      if (warningNotes.length > 0) {
+        message += `\n\n提示：${warningNotes.slice(0, 2).join('；')}${warningNotes.length > 2 ? '…' : ''}`;
+      }
+
+      Alert.alert(successCount > 0 ? '导入完成' : '导入失败', message);
     } catch (error: any) {
       Alert.alert('上传失败', error.message);
     } finally {
@@ -68,7 +108,8 @@ export default function RagScreen() {
     try {
       const count = await processUnembeddedChunks(
         settings.dashscopeApiKey,
-        settings.embeddingModel
+        resolveRagEmbeddingModel(settings, 'text'),
+        resolveRagEmbeddingModel(settings, 'non_text'),
       );
       await refreshRagStats();
       Alert.alert('处理完成', `成功处理 ${count} 个待嵌入的知识块`);
@@ -77,7 +118,12 @@ export default function RagScreen() {
     } finally {
       setProcessing(false);
     }
-  }, [settings.dashscopeApiKey, settings.embeddingModel]);
+  }, [
+    settings.dashscopeApiKey,
+    settings.embeddingModel,
+    settings.ragTextEmbeddingModel,
+    settings.ragNonTextEmbeddingModel,
+  ]);
 
   // 清空知识库
   const handleClearRag = () => {
@@ -104,7 +150,7 @@ export default function RagScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={{ color: colors.primary, fontSize: 16 }} numberOfLines={1}>← 返回</Text>
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>📚 知识库</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>知识库</Text>
         <View style={{ width: 86 }} />
       </View>
 
@@ -146,20 +192,20 @@ export default function RagScreen() {
             操作
           </Text>
 
-          {/* 上传 Markdown */}
+          {/* 上传知识库文件 */}
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={handleUploadMarkdown}
+            onPress={handleUploadKnowledge}
             disabled={uploading}
           >
             <View style={styles.actionLeft}>
-              <Text style={styles.actionIcon}>📄</Text>
+              <Image source={APP_AVATAR} style={styles.actionImageIcon} />
               <View>
                 <Text style={[styles.actionTitle, { color: colors.text }]}>
-                  上传 Markdown 文件
+                  上传知识库文件
                 </Text>
                 <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
-                  支持多选 .md / .txt，自动分块并嵌入
+                  支持 .md / .txt / .pdf / 图片，多选后自动入库
                 </Text>
               </View>
             </View>
@@ -217,7 +263,7 @@ export default function RagScreen() {
               📌 <Text style={{ fontWeight: '600' }}>一切皆历史</Text> — 所有聊天对话自动保存为知识，跨会话记忆{'\n\n'}
               📌 <Text style={{ fontWeight: '600' }}>增量更新</Text> — 新数据会被追加到知识库，而不是每次全量重建{'\n\n'}
               📌 <Text style={{ fontWeight: '600' }}>本地存储</Text> — 所有数据存储在手机本地，隐私有保障{'\n\n'}
-              📌 <Text style={{ fontWeight: '600' }}>Markdown 支持</Text> — 上传 .md 文件构建专属知识库{'\n\n'}
+              📌 <Text style={{ fontWeight: '600' }}>多格式导入</Text> — 支持文本 / PDF / 图片构建专属知识库{'\n\n'}
               📌 <Text style={{ fontWeight: '600' }}>节省成本</Text> — 已嵌入的数据无需重复计算
             </Text>
           </View>
@@ -234,8 +280,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
     borderBottomWidth: 0.5,
   },
   backBtn: {
@@ -245,8 +291,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 19,
+    fontWeight: '700',
     textAlign: 'center',
   },
   scroll: {
@@ -257,9 +303,14 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     margin: 16,
-    padding: 20,
-    borderRadius: 16,
+    padding: 22,
+    borderRadius: 20,
     borderWidth: 0.5,
+    shadowColor: '#0B1221',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
   statsTitle: {
     fontSize: 16,
@@ -283,23 +334,28 @@ const styles = StyleSheet.create({
   },
   actionsSection: {
     paddingHorizontal: 16,
-    marginTop: 8,
+    marginTop: 10,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 10,
     marginLeft: 4,
-    textTransform: 'uppercase',
   },
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     borderWidth: 0.5,
-    marginBottom: 10,
+    marginBottom: 12,
+    shadowColor: '#0B1221',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   actionLeft: {
     flexDirection: 'row',
@@ -310,25 +366,31 @@ const styles = StyleSheet.create({
     fontSize: 28,
     marginRight: 14,
   },
+  actionImageIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    marginRight: 12,
+  },
   actionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
   },
   actionDesc: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 13,
+    marginTop: 3,
   },
   helpSection: {
     paddingHorizontal: 16,
     marginTop: 20,
   },
   helpCard: {
-    padding: 16,
-    borderRadius: 12,
+    padding: 17,
+    borderRadius: 16,
     borderWidth: 0.5,
   },
   helpText: {
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 30,
   },
 });

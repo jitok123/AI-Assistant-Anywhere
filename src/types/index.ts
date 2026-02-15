@@ -49,6 +49,8 @@ export interface RagChunk {
   sourceId: string;
   content: string;
   embedding: number[] | null;
+  /** 该块使用的 embedding 模型 */
+  embeddingModel?: string;
   /** RAG 层级 */
   layer: RagLayer;
   createdAt: number;
@@ -124,7 +126,12 @@ export interface AppSettings {
   maxTokens: number;
   // ── 📊 Embedding 模型配置 ──
   dashscopeApiKey: string;
+  /** 兼容旧逻辑：默认 embedding 模型（历史字段） */
   embeddingModel: string;
+  /** RAG 文本输入使用的 embedding 模型 */
+  ragTextEmbeddingModel: string;
+  /** RAG 非文本输入（图片/PDF等）使用的 embedding 模型 */
+  ragNonTextEmbeddingModel: string;
   // ── 📚 RAG 配置 ──
   ragTopK: number;
   chunkSize: number;
@@ -155,6 +162,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxTokens: 4096,
   dashscopeApiKey: '',
   embeddingModel: 'text-embedding-v3',
+  ragTextEmbeddingModel: 'text-embedding-v3',
+  ragNonTextEmbeddingModel: 'qwen3-vl-embedding',
   ragTopK: 5,
   chunkSize: 500,
   chunkOverlap: 50,

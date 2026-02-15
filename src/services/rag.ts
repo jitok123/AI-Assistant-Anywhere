@@ -14,7 +14,22 @@ import {
 } from './database';
 import { findTopK } from '../utils/vectorSearch';
 import { chunkMarkdown, chunkText, formatMessageForRag } from '../utils/markdown';
-import type { RagChunk, RagSearchResult, Message } from '../types';
+import type { RagChunk, RagSearchResult, Message, AppSettings } from '../types';
+
+function isMarkdownSource(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith('.md') || lower.endsWith('.markdown');
+}
+
+export function resolveRagEmbeddingModel(
+  settings: Pick<AppSettings, 'embeddingModel' | 'ragTextEmbeddingModel' | 'ragNonTextEmbeddingModel'>,
+  sourceKind: 'text' | 'non_text' = 'text',
+): string {
+  if (sourceKind === 'non_text') {
+    return settings.ragNonTextEmbeddingModel || settings.embeddingModel || 'qwen3-vl-embedding';
+  }
+  return settings.ragTextEmbeddingModel || settings.embeddingModel || 'text-embedding-v3';
+}
 
 /** 生成唯一 ID */
 async function generateId(): Promise<string> {
@@ -51,6 +66,7 @@ export async function addChatToRag(
       sourceId: messages[0].conversationId,
       content,
       embedding: null,
+      embeddingModel,
       layer: 'general',
       createdAt: Date.now(),
     });
@@ -68,7 +84,7 @@ export async function addChatToRag(
     );
     for (let i = 0; i < ragChunks.length; i++) {
       if (embeddings[i]) {
-        await updateChunkEmbedding(ragChunks[i].id, embeddings[i]);
+        await updateChunkEmbedding(ragChunks[i].id, embeddings[i], embeddingModel);
       }
     }
   } catch (error) {
@@ -83,11 +99,14 @@ export async function addMarkdownToRag(
   content: string,
   fileName: string,
   dashscopeApiKey: string,
-  embeddingModel: string
+  embeddingModel: string,
+  sourceKind: 'text' | 'non_text' = 'text',
 ): Promise<number> {
   if (!dashscopeApiKey) throw new Error('请先配置阿里云 API Key');
 
-  const chunks = chunkMarkdown(content, 500, 50);
+  const chunks = isMarkdownSource(fileName)
+    ? chunkMarkdown(content, 500, 50)
+    : chunkText(content, 550, 70);
   const ragChunks: RagChunk[] = [];
 
   for (const text of chunks) {
@@ -98,6 +117,7 @@ export async function addMarkdownToRag(
       sourceId: fileName,
       content: text,
       embedding: null,
+      embeddingModel,
       layer: 'general',
       createdAt: Date.now(),
     });
@@ -114,7 +134,7 @@ export async function addMarkdownToRag(
     );
     for (let i = 0; i < ragChunks.length; i++) {
       if (embeddings[i]) {
-        await updateChunkEmbedding(ragChunks[i].id, embeddings[i]);
+        await updateChunkEmbedding(ragChunks[i].id, embeddings[i], embeddingModel);
       }
     }
   } catch (error) {
@@ -137,23 +157,42 @@ export async function searchRag(
 
   try {
     // 获取查询的 embedding
-    const queryEmbedding = await getEmbedding(query, dashscopeApiKey, embeddingModel);
-
     // 从数据库获取所有有 embedding 的块
     const allChunks = await getAllRagChunksWithEmbeddings();
 
     if (allChunks.length === 0) return [];
 
-    // 向量相似度搜索
-    const results = findTopK(queryEmbedding, allChunks, topK);
+    const modelGroups = new Map<string, typeof allChunks>();
+    for (const chunk of allChunks) {
+      const model = chunk.embeddingModel || embeddingModel;
+      const list = modelGroups.get(model) || [];
+      list.push(chunk as any);
+      modelGroups.set(model, list);
+    }
 
-    return results.map((r) => ({
-      id: r.id,
-      content: r.content,
-      score: r.score,
-      source: 'rag',
-      layer: 'general' as const,
-    }));
+    const merged: Array<{ id: string; content: string; score: number }> = [];
+    for (const [model, group] of modelGroups.entries()) {
+      const queryEmbedding = await getEmbedding(query, dashscopeApiKey, model);
+      const part = findTopK(queryEmbedding, group as any, topK);
+      merged.push(...part);
+    }
+
+    const seen = new Set<string>();
+    return merged
+      .sort((a, b) => b.score - a.score)
+      .filter((r) => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      })
+      .slice(0, topK)
+      .map((r) => ({
+        id: r.id,
+        content: r.content,
+        score: r.score,
+        source: 'rag',
+        layer: 'general' as const,
+      }));
   } catch (error) {
     console.error('RAG 搜索失败:', error);
     return [];
@@ -166,7 +205,8 @@ export async function searchRag(
  */
 export async function processUnembeddedChunks(
   dashscopeApiKey: string,
-  embeddingModel: string
+  embeddingModel: string,
+  fallbackNonTextModel?: string,
 ): Promise<number> {
   if (!dashscopeApiKey) return 0;
 
@@ -174,18 +214,27 @@ export async function processUnembeddedChunks(
   if (chunks.length === 0) return 0;
 
   let processed = 0;
-  const texts = chunks.map((c) => c.content);
-
   try {
-    const embeddings = await getBatchEmbeddings(
-      texts,
-      dashscopeApiKey,
-      embeddingModel
-    );
+    const grouped = new Map<string, Array<{ idx: number; id: string; content: string }>>();
     for (let i = 0; i < chunks.length; i++) {
-      if (embeddings[i]) {
-        await updateChunkEmbedding(chunks[i].id, embeddings[i]);
-        processed++;
+      const c = chunks[i];
+      const model = c.embeddingModel || (c.source === 'upload' && fallbackNonTextModel ? fallbackNonTextModel : embeddingModel);
+      const arr = grouped.get(model) || [];
+      arr.push({ idx: i, id: c.id, content: c.content });
+      grouped.set(model, arr);
+    }
+
+    for (const [model, group] of grouped.entries()) {
+      const embeddings = await getBatchEmbeddings(
+        group.map((g) => g.content),
+        dashscopeApiKey,
+        model,
+      );
+      for (let i = 0; i < group.length; i++) {
+        if (embeddings[i] && embeddings[i].length > 0) {
+          await updateChunkEmbedding(group[i].id, embeddings[i], model);
+          processed++;
+        }
       }
     }
   } catch (error) {

@@ -27,6 +27,7 @@ import {
 } from './database';
 import { findTopK } from '../utils/vectorSearch';
 import { chunkText } from '../utils/markdown';
+import { resolveRagEmbeddingModel } from './rag';
 import type {
   RagChunk,
   RagLayer,
@@ -53,7 +54,7 @@ export async function multiLayerSearch(
     const queryEmbedding = await getEmbedding(
       query,
       settings.dashscopeApiKey,
-      settings.embeddingModel,
+      resolveRagEmbeddingModel(settings, 'text'),
     );
 
     const results: RagSearchResult[] = [];
@@ -182,6 +183,7 @@ export async function updateEmotionalLayer(
       sourceId: 'emotional_analysis',
       content: `[情感分析 ${new Date().toLocaleString('zh-CN')}] ${emotionalAnalysis}`,
       embedding: null,
+      embeddingModel: resolveRagEmbeddingModel(settings, 'text'),
       layer: 'emotional',
       createdAt: Date.now(),
     };
@@ -193,9 +195,9 @@ export async function updateEmotionalLayer(
       const embedding = await getEmbedding(
         chunk.content,
         settings.dashscopeApiKey,
-        settings.embeddingModel,
+        resolveRagEmbeddingModel(settings, 'text'),
       );
-      await updateChunkEmbedding(id, embedding);
+      await updateChunkEmbedding(id, embedding, resolveRagEmbeddingModel(settings, 'text'));
     } catch (embErr) {
       console.warn('[RAG] 感性层 embedding 失败:', embErr);
     }
@@ -274,6 +276,7 @@ export async function updateRationalLayer(
         sourceId: 'user_profile',
         content: `[用户画像] ${text}`,
         embedding: null,
+        embeddingModel: resolveRagEmbeddingModel(settings, 'text'),
         layer: 'rational',
         createdAt: Date.now(),
       });
@@ -288,11 +291,15 @@ export async function updateRationalLayer(
       const embeddings = await getBatchEmbeddings(
         texts,
         settings.dashscopeApiKey,
-        settings.embeddingModel,
+        resolveRagEmbeddingModel(settings, 'text'),
       );
       for (let i = 0; i < ragChunks.length; i++) {
         if (embeddings[i] && embeddings[i].length > 0) {
-          await updateChunkEmbedding(ragChunks[i].id, embeddings[i]);
+          await updateChunkEmbedding(
+            ragChunks[i].id,
+            embeddings[i],
+            resolveRagEmbeddingModel(settings, 'text'),
+          );
         }
       }
     } catch (embErr) {
@@ -337,6 +344,7 @@ export async function addToHistoricalLayer(
         sourceId: messages[0]?.conversationId || 'unknown',
         content,
         embedding: null,
+        embeddingModel: resolveRagEmbeddingModel(settings, 'text'),
         layer: 'historical',
         createdAt: Date.now(),
       });
@@ -350,11 +358,15 @@ export async function addToHistoricalLayer(
       const embeddings = await getBatchEmbeddings(
         texts,
         settings.dashscopeApiKey,
-        settings.embeddingModel,
+        resolveRagEmbeddingModel(settings, 'text'),
       );
       for (let i = 0; i < ragChunks.length; i++) {
         if (embeddings[i] && embeddings[i].length > 0) {
-          await updateChunkEmbedding(ragChunks[i].id, embeddings[i]);
+          await updateChunkEmbedding(
+            ragChunks[i].id,
+            embeddings[i],
+            resolveRagEmbeddingModel(settings, 'text'),
+          );
         }
       }
     } catch (err) {
