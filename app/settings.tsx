@@ -195,7 +195,7 @@ export default function SettingsScreen() {
           <Text style={{ color: colors.primary, fontSize: 16 }} numberOfLines={1}>← 返回</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>设置</Text>
-        <View style={{ width: 60 }} />
+        <View style={{ width: 86 }} />
       </View>
 
       <ScrollView
@@ -800,7 +800,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 0.5,
   },
-  backBtn: { padding: 8, minWidth: 60 },
+  backBtn: { padding: 8, minWidth: 86, justifyContent: 'center' },
   headerTitle: {
     flex: 1,
     fontSize: 17,

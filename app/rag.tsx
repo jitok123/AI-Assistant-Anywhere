@@ -102,10 +102,10 @@ export default function RagScreen() {
       {/* 头部 */}
       <View style={[styles.header, { backgroundColor: colors.headerBg, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>← 返回</Text>
+          <Text style={{ color: colors.primary, fontSize: 16 }} numberOfLines={1}>← 返回</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>📚 知识库</Text>
-        <View style={{ width: 60 }} />
+        <View style={{ width: 86 }} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -240,7 +240,8 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     padding: 8,
-    width: 60,
+    width: 86,
+    justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,

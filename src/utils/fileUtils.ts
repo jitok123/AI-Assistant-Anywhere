@@ -317,9 +317,9 @@ export async function imageToBase64(uri: string): Promise<string> {
   try {
     const manipulated = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: 1280 } }],
+      [{ resize: { width: 960 } }],
       {
-        compress: 0.72,
+        compress: 0.6,
         format: ImageManipulator.SaveFormat.JPEG,
         base64: true,
       }

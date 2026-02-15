@@ -10,6 +10,7 @@ import {
   Text,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../hooks/useTheme';
@@ -89,9 +90,9 @@ export function ChatInput() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 0.65,
         allowsMultipleSelection: true,
-        selectionLimit: 6,
+        selectionLimit: 4,
       });
 
       if (!result.canceled && result.assets.length > 0) {
@@ -155,10 +156,10 @@ export function ChatInput() {
   };
 
   return (
-      <View>
+      <View style={styles.root}>
         {/* 图片预览 */}
         {pendingAttachments.length > 0 && (
-          <View style={[styles.imagePreviewRow, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
+          <View style={[styles.imagePreviewRow, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
             <View style={styles.imagePreviewWrap}> 
               {pendingAttachments.map((att, idx) => (
                 <View key={`${att.uri}-${idx}`} style={styles.attachmentChip}>
@@ -178,7 +179,7 @@ export function ChatInput() {
             </View>
           </View>
         )}
-        <View style={[styles.container, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
+        <View style={[styles.container, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         {/* 图片按钮 */}
         <TouchableOpacity
           onPress={chooseAttachment}
@@ -201,6 +202,7 @@ export function ChatInput() {
             value={text}
             onChangeText={setText}
             multiline
+            textAlignVertical="center"
             maxLength={5000}
             editable={!isLoading}
             onSubmitEditing={handleSend}
@@ -238,17 +240,21 @@ export function ChatInput() {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    zIndex: 10,
+    elevation: 3,
+  },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderTopWidth: 0.5,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    borderTopWidth: 0.8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   iconBtn: {
     width: 38,
@@ -266,9 +272,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   iconSymbol: {
     fontSize: 22,
@@ -278,23 +284,24 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     flex: 1,
+    minWidth: 140,
     borderRadius: 22,
-    borderWidth: 1.2,
+    borderWidth: 1.3,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     minHeight: 46,
     maxHeight: 124,
     marginHorizontal: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   input: {
     fontSize: 15,
     maxHeight: 98,
-    lineHeight: 21,
+    lineHeight: 23,
     fontFamily: Typography.fontFamily,
   },
   // 录音按钮
@@ -319,9 +326,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sendBtnText: {
     color: '#FFF',

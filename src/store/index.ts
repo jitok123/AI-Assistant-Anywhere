@@ -74,6 +74,24 @@ function shouldDescribePreviousGeneratedImage(text: string): boolean {
     && /描述|讲讲|分析|看看|解读|说说/.test(t);
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(label));
+    }, ms);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 interface AppState {
   // 初始化
   initialized: boolean;
@@ -417,7 +435,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (imageAttachments.length || latestGeneratedImage) {
         const imageParts: Array<{ type: 'image_url'; image_url: { url: string } }> = [];
-        for (const img of imageAttachments.slice(0, 4)) {
+        for (const img of imageAttachments.slice(0, 2)) {
           const b64 = await imageToBase64(img.uri);
           imageParts.push({ type: 'image_url', image_url: { url: b64 } });
         }
@@ -482,7 +500,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
         // ⚡ 关键修复：流完成信号到达时立即清除 loading
         //    防止 XHR promise 未正确 resolve 导致 isLoading 卡住
-        if (done && chunk) {
+        if (done) {
           console.log('[Store] 流式完成信号到达，清除 loading');
           set({ isLoading: false, streamingContent: '' });
         }
@@ -520,14 +538,18 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
         ];
 
-        const visionContent = await chatCompletion(
-          visionOnlyMessages,
-          settings.dashscopeApiKey,
-          getDashScopeCompatibleBaseUrl(),
-          'qwen-vl-max',
-          undefined,
-          0.3,
-          settings.maxTokens,
+        const visionContent = await withTimeout(
+          chatCompletion(
+            visionOnlyMessages,
+            settings.dashscopeApiKey,
+            getDashScopeCompatibleBaseUrl(),
+            'qwen-vl-max',
+            undefined,
+            0.3,
+            settings.maxTokens,
+          ),
+          70000,
+          '图片识别超时，请重试'
         );
 
         const toolCalls: any[] = [
@@ -610,14 +632,18 @@ export const useAppStore = create<AppState>((set, get) => ({
             enhancedMessages.unshift({ role: 'system', content: `你是一个严谨的中文助手。${injectedContext}` });
           }
 
-          const finalContent = await chatCompletion(
-            enhancedMessages,
-            settings.deepseekApiKey,
-            settings.deepseekBaseUrl,
-            settings.deepseekModel,
-            streamCallback,
-            settings.temperature,
-            settings.maxTokens,
+          const finalContent = await withTimeout(
+            chatCompletion(
+              enhancedMessages,
+              settings.deepseekApiKey,
+              settings.deepseekBaseUrl,
+              settings.deepseekModel,
+              streamCallback,
+              settings.temperature,
+              settings.maxTokens,
+            ),
+            90000,
+            '模型响应超时，请稍后重试'
           );
 
           agentResult = { content: finalContent, toolCalls };
@@ -626,10 +652,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           agentResult = { content: visionContent, toolCalls };
         }
       } else {
-        agentResult = await agentProcess(
-          apiMessages,
-          settings,
-          streamCallback,
+        agentResult = await withTimeout(
+          agentProcess(
+            apiMessages,
+            settings,
+            streamCallback,
+          ),
+          90000,
+          '模型响应超时，请稍后重试'
         );
       }
 

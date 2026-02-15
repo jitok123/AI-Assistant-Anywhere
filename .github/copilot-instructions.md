@@ -17,6 +17,17 @@
 - `isLoading` has multiple safeguards in store (stream done, catch paths, and `finally` + 120s safety timeout). Avoid changes that can leave loading stuck.
 - Post-conversation heavy jobs are intentionally debounced/asynchronous; avoid adding synchronous expensive work in the message-response hot path.
 
+## Android keyboard + input visibility (critical)
+- Chat input must remain visible when software keyboard is opened on Android real devices.
+- Keep keyboard behavior aligned across config and runtime (`app.json` keyboard layout mode + chat page layout strategy).
+- If chat-page layout is adjusted (`app/index.tsx`, `ChatInput`), verify no regression in: keyboard open, first message sent, second message send, and drawer/settings clickability.
+- Avoid solutions that only pass emulator; prioritize behavior on physical Android devices (e.g., iQOO/MIUI/ColorOS variants).
+
+## Text-first UX for DeepSeek (critical)
+- DeepSeek is text-centric in this app; prioritize readability over decorative UI.
+- Keep Chinese copy concise and natural; improve line-height, paragraph spacing, and visual hierarchy before adding extra visual ornaments.
+- Markdown rendering should avoid noisy formatting and preserve long-form answer readability.
+
 ## Multi-attachment conventions (new)
 - `sendMessage` supports mixed attachments in one turn (`attachments`), including multiple images and files.
 - Persist attachment metadata via `Message.attachments` and SQLite `messages.attachments_json`; keep backward compatibility with legacy single-file fields.
@@ -50,3 +61,4 @@
 - Prefer extending existing service files over introducing parallel abstractions.
 - Keep changes small and traceable: if touching pipeline behavior, verify effects in `app/index.tsx` + `src/components/ChatInput.tsx` + `src/components/MessageBubble.tsx` together.
 - Architecture notes live in `架构文档/log7_*.md` to `log12_*.md`; use them as authoritative design context before refactors.
+- For UI changes, align style references with "Google clarity + Apple calm" while preserving performance on Android mid/high-end devices.

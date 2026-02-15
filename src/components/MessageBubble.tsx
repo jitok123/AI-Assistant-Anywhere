@@ -15,12 +15,12 @@ interface Props {
 }
 
 /** 移除 Markdown 图片语法，避免 react-native-markdown-display 的 key prop 崩溃 */
-function stripMarkdownImages(text: string): string {
+export function stripMarkdownImages(text: string): string {
   // 移除 ![alt](url) 格式
   return text.replace(/!\[[^\]]*\]\([^)]+\)/g, '').trim();
 }
 
-export function MessageBubble({ message }: Props) {
+function MessageBubbleImpl({ message }: Props) {
   const colors = useTheme();
   const { userDisplayName, userAvatarEmoji, userBubbleStyle, theme } = useAppStore((s) => s.settings);
   const isUser = message.role === 'user';
@@ -35,11 +35,11 @@ export function MessageBubble({ message }: Props) {
   const textColor = isUser ? colors.userBubbleText : colors.aiBubbleText;
 
   const mdStyles = {
-    body: { color: textColor, fontSize: 15, lineHeight: 22, fontFamily: Typography.fontFamily },
-    heading1: { color: textColor, fontSize: 20, fontWeight: '700' as const, marginBottom: 8 },
-    heading2: { color: textColor, fontSize: 18, fontWeight: '600' as const, marginBottom: 6 },
-    heading3: { color: textColor, fontSize: 16, fontWeight: '600' as const, marginBottom: 4 },
-    paragraph: { color: textColor, marginBottom: 8 },
+    body: { color: textColor, fontSize: 15, lineHeight: 24, fontFamily: Typography.fontFamily },
+    heading1: { color: textColor, fontSize: 21, fontWeight: '700' as const, marginTop: 4, marginBottom: 10, lineHeight: 30 },
+    heading2: { color: textColor, fontSize: 19, fontWeight: '700' as const, marginTop: 4, marginBottom: 9, lineHeight: 28 },
+    heading3: { color: textColor, fontSize: 17, fontWeight: '600' as const, marginTop: 3, marginBottom: 8, lineHeight: 26 },
+    paragraph: { color: textColor, marginBottom: 12, lineHeight: 24 },
     link: { color: colors.primary },
     code_inline: {
       backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : colors.primaryLight,
@@ -67,11 +67,16 @@ export function MessageBubble({ message }: Props) {
       borderLeftColor: colors.primary,
       borderLeftWidth: 3,
       paddingLeft: 10,
-      backgroundColor: 'transparent',
+      paddingVertical: 6,
+      marginBottom: 10,
+      backgroundColor: 'rgba(120,145,180,0.08)',
+      borderTopRightRadius: 8,
+      borderBottomRightRadius: 8,
     },
-    list_item: { color: textColor },
+    list_item: { color: textColor, lineHeight: 24, marginBottom: 4 },
     bullet_list: { color: textColor },
     ordered_list: { color: textColor },
+    hr: { backgroundColor: colors.border, height: 1, marginVertical: 10 },
   };
 
   const handleDownloadImage = async (uri?: string) => {
@@ -204,7 +209,7 @@ export function MessageBubble({ message }: Props) {
         <View style={bubbleStyle}>
           {message.content ? (
             isUser ? (
-              <Text style={{ color: textColor, fontSize: 15, lineHeight: 22, fontFamily: Typography.fontFamily }}>
+              <Text style={{ color: textColor, fontSize: 15, lineHeight: 24, fontFamily: Typography.fontFamily }}>
                 {message.content}
               </Text>
             ) : (
@@ -257,11 +262,13 @@ export function MessageBubble({ message }: Props) {
   );
 }
 
+export const MessageBubble = React.memo(MessageBubbleImpl);
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     alignItems: 'flex-start',
   },
   userContainer: {
@@ -291,15 +298,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   bubble: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     borderRadius: 20,
-    maxWidth: '95%',
+    maxWidth: '98%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.09,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   userBubble: {
     borderBottomRightRadius: 6,
