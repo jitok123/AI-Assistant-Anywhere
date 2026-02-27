@@ -542,7 +542,7 @@ export default function SettingsScreen() {
               maxLength={8}
             />
           </Row>
-          <Row label="AI 助手头像" hint="全局统一使用当前品牌头像（聊天/知识库/通话/侧栏）">
+          <Row label="AI 助手头像" hint="全局统一使用当前头像（聊天/知识库/通话/侧栏）">
             <Image source={APP_AVATAR} style={[styles.brandAvatarPreview, { borderColor: colors.border }]} />
           </Row>
           <Row label="我的气泡颜色" hint="选择你发送消息的气泡风格">
@@ -637,8 +637,8 @@ export default function SettingsScreen() {
               fontSize: 13,
             }}
           >
-            随身AI助手 v1.0.0{'\n'}
-            一个真正懂你的AI助手{'\n'}
+            随身AI朋友 v1.0.0{'\n'}
+            一个真正懂你的AI朋友{'\n'}
             本地数据存储 · 跨会话记忆 · 隐私保障
           </Text>
         </View>

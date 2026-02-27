@@ -1,102 +1,96 @@
-# 随身AI助手 (Telephone AI Anywhere) · V2.0
+<div align="center">
+  <img src="assets/icon.png" width="120" alt="Logo" />
+  <h1>随身AI助手 (AI-Assistant-Anywhere)</h1>
+  <p>一个全功能 AI 助手应用 — 多层记忆 · 联网搜索 · AI绘图</p>
 
-> 一个全功能 AI 助手应用 — 多层记忆 · 联网搜索 · AI绘图 · 语音通话
-
-> 版本：**V2.0.0（2026-02）**
-
----
-
-
-## 功能概览
-
-| 功能 | 说明 |
-|------|------|
-| AI 对话 | 流式响应，支持 DeepSeek / 通义千问 / Kimi / GLM / GPT 等所有兼容 OpenAI 格式的模型 |
-| 语音通话 | 类似豆包电话功能，按住说话，AI 自动语音回复，全屏通话界面 |
-| 多层 RAG 记忆 | 感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库 |
-| 联网搜索 | Agent 自主判断是否需要搜索，使用 DashScope Qwen `enable_search` 获取实时信息 |
-| AI 绘图 | Agent 自主判断是否需要画图，阿里云 DashScope 文生图 |
-| 出图提示词优化 | 生图前先由 LLM 自动优化提示词，不再直接转发用户原话 |
-| 语音输入 | 阿里云 Paraformer ASR 语音识别 |
-| 图片理解 | 支持多模态模型（通义千问 VL 等），发送图片给 AI 分析 |
-| 文件附件对话 | 聊天输入支持多图片 + 多文件混合发送（文本文件自动提取节选用于上下文） |
-| 数学公式渲染 | 支持 LaTeX 块级公式（$$...$$ / \\[...\\]）正确排版显示，全屏预览支持复制源码 |
-| Mermaid 图表渲染 | 支持 Mermaid 代码块直接渲染，点击可全屏预览并双指缩放，支持复制源码 |
-| 生图下载 | 生成后的图片支持在消息气泡中一键保存到本地 |
-| 图片+联网同回合 | 图片理解与联网搜索可在同一轮自动串联（先看图，再检索，再综合回答） |
-| 时间工具 | 内置时间函数（当前时间/日期/星期/时间戳），并为模型注入“当前时间锚点” |
-| 知识库管理 | 上传文本 / PDF / 图片构建本地知识库，支持按类型配置向量模型（文本/非文本双路） |
-| 数据导入导出 | 完整的对话、知识库备份与恢复 |
-| 会话批量删除 | 侧栏支持编辑模式、多选/全选后批量删除 |
-| 统一错误处理 | 全局 ErrorHandler 统一日志结构（预留 Sentry 接入） |
-| API 版本配置 | 统一维护 API 版本和端点路径构造 |
-| 暗色主题 | 自动跟随系统或手动切换 |
+  <p>
+    <img src="https://img.shields.io/badge/React%20Native-0.81.5-blue.svg" alt="React Native" />
+    <img src="https://img.shields.io/badge/Expo-54.0.0-black.svg" alt="Expo" />
+    <img src="https://img.shields.io/badge/Zustand-4.5.0-orange.svg" alt="Zustand" />
+    <img src="https://img.shields.io/badge/License-GPL--3.0-green.svg" alt="License" />
+    <img src="https://img.shields.io/badge/Version-2.0.0-brightgreen.svg" alt="Version" />
+  </p>
+</div>
 
 ---
 
-## 项目架构
+## ✨ 功能概览 (Features)
 
-```
-telephone_ai_anywhere/
-├── app/                          # Expo Router 页面层
-│   ├── _layout.tsx               # 根布局（Stack 导航）
-│   ├── index.tsx                 # 主聊天页面
-│   ├── call.tsx                  # 语音通话页面（类似豆包打电话）
-│   ├── settings.tsx              # 设置页面
-│   └── rag.tsx                   # 知识库管理页面
-│
-├── src/                          # 核心代码层
-│   ├── components/               # UI 组件
-│   │   ├── MessageBubble.tsx     # 消息气泡（Markdown / LaTeX / Mermaid / 图片 / 搜索引用 / 工具调用）
-│   │   ├── ChatInput.tsx         # 输入框（文本 / 图片 / 文件附件）
-│   │   └── ConversationDrawer.tsx # 对话列表侧边栏
-│   │
-│   ├── services/                 # 后端服务层
-│   │   ├── deepseek.ts           # LLM API 调用（XHR 流式 + 自动重试）
-│   │   ├── agent.ts              # AI Agent 引擎（LLM 路由优先 + 规则兜底）
-│   │   ├── ragSpecialist.ts      # 多层 RAG 记忆管理（感性/理性/历史层）
-│   │   ├── rag.ts                # 通用 RAG（知识库检索）
-│   │   ├── embedding.ts          # 文本向量化（DashScope Embedding）
-│   │   ├── voice.ts              # 语音服务（ASR + TTS + 超时处理）
-│   │   ├── webSearch.ts          # 联网搜索（DashScope Qwen enable_search）
-│   │   ├── imageGen.ts           # AI 绘图（DashScope wanx）
-│   │   ├── errorHandler.ts       # 统一错误处理（可扩展 Sentry）
-│   │   └── database.ts           # SQLite 本地数据库
-│   │
-│   ├── store/                    # 全局状态
-│   │   └── index.ts              # Zustand Store（消息流 + RAG + Agent 编排）
-│   │
-│   ├── types/                    # TypeScript 类型定义
-│   │   └── index.ts              # 所有接口和类型
-│   │
-│   ├── config/                   # 配置管理
-│   │   ├── models.ts             # AI 模型预设（对话模型 + Embedding 模型）
-│   │   └── api.ts                # API 版本与端点配置
-│   │
-│   ├── constants/                # 常量
-│   │   └── theme.ts              # 主题配色（亮色 / 暗色）
-│   │
-│   ├── hooks/                    # React Hooks
-│   │   └── useTheme.ts           # 主题 Hook
-│   │
-│   └── utils/                    # 工具函数
-│       ├── fileUtils.ts          # 文件操作（导入导出 / 图片保存）
-│       ├── markdown.ts           # Markdown 分块处理
-│       └── vectorSearch.ts       # 余弦相似度向量检索
-│
-├── android/                      # Android 原生代码
-├── assets/                       # 静态资源
-├── package.json
-├── tsconfig.json
-├── app.json                      # Expo 配置
-└── eas.json                      # EAS Build 配置
+- **💬 AI 对话**：流式响应，支持 DeepSeek / 通义千问 / Kimi / GLM / GPT 等所有兼容 OpenAI 格式的模型。
+- **🧠 多层 RAG 记忆**：感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库。
+- **🌐 联网搜索**：Agent 自主判断是否需要搜索，使用 DashScope Qwen `enable_search` 获取实时信息。
+- **🎨 AI 绘图**：Agent 自主判断是否需要画图，阿里云 DashScope 文生图。生图前先由 LLM 自动优化提示词。
+- **🎙️ 语音输入**：集成阿里云 Paraformer ASR 语音识别。
+- **👁️ 图片理解**：支持多模态模型（通义千问 VL 等），发送图片给 AI 分析。
+- **📎 文件附件对话**：聊天输入支持多图片 + 多文件混合发送（文本文件自动提取节选用于上下文）。
+- **📐 数学公式渲染**：支持 LaTeX 块级公式（`$$...$$` / `\[...\]`）正确排版显示，全屏预览支持复制源码。
+- **📊 Mermaid 图表渲染**：支持 Mermaid 代码块直接渲染，点击可全屏预览并双指缩放，支持复制源码。
+- **💾 生图下载**：生成后的图片支持在消息气泡中一键保存到本地。
+- **🔄 图片+联网同回合**：图片理解与联网搜索可在同一轮自动串联（先看图，再检索，再综合回答）。
+- **⏰ 时间工具**：内置时间函数（当前时间/日期/星期/时间戳），并为模型注入“当前时间锚点”。
+- **📚 知识库管理**：上传文本 / PDF / 图片构建本地知识库，支持按类型配置向量模型（文本/非文本双路）。
+- **📦 数据导入导出**：完整的对话、知识库备份与恢复。
+- **🗑️ 会话批量删除**：侧栏支持编辑模式、多选/全选后批量删除。
+- **🛡️ 统一错误处理**：全局 ErrorHandler 统一日志结构（预留 Sentry 接入）。
+- **⚙️ API 版本配置**：统一维护 API 版本和端点路径构造。
+- **🌙 暗色主题**：自动跟随系统或手动切换。
+
+---
+
+## 🖥 环境支持 (Environment Support)
+
+| 平台 | 支持状态 | 备注 |
+|------|---------|------|
+| **Android** | ✅ 支持 | 推荐 Android 10.0 及以上版本 |
+| **iOS** | 🚧 实验性 | 核心功能可用，部分原生模块需适配 |
+| **Web** | ❌ 不支持 | 依赖原生 SQLite 和文件系统 |
+
+---
+
+## 📦 安装与运行 (Install & Run)
+
+### 环境要求
+
+- Node.js 18+
+- Expo CLI (`npm install -g expo-cli`)
+- Android Studio (用于 Android 构建) 或 iOS 开发环境
+
+### 启动步骤
+
+```bash
+# 1. 克隆项目
+git clone <repo-url>
+cd telephone_ai_anywhere
+
+# 2. 安装依赖
+npm install
+
+# 3. 启动开发服务器
+npx expo start
+
+# 4. 运行 Android
+npx expo run:android
 ```
 
 ---
 
-## 核心架构
+## 🔨 使用指南 (Usage)
 
-```
+在应用的 **设置** 页面中配置以下 API Key 即可开始使用：
+
+1. **对话模型 API Key**（必需）：支持 DeepSeek / 通义千问 / Kimi / GLM / OpenAI。
+2. **阿里云 DashScope API Key**：用于 Embedding(RAG)、语音识别、图片生成、联网搜索。
+3. **百度千帆 API Key**：预留字段（当前默认不使用）。
+
+> **💡 提示**：当前联网搜索默认走 DashScope（与 Embedding/生图复用同一 Key）。
+
+---
+
+## 🏗 核心架构 (Architecture)
+
+### 数据流向
+
+```text
 用户输入（文字 / 语音 / 图片 / 通话）
               │
               ▼
@@ -112,8 +106,8 @@ telephone_ai_anywhere/
     │                 │
     │           ┌─────┼─────┐
     │           ▼     ▼     ▼
-       │       联网搜索  绘图   直接回复
-       │      (DashScope) (阿里云)
+    │       联网搜索  绘图   直接回复
+    │      (DashScope) (阿里云)
     │                 │
     └────────┬────────┘
              ▼
@@ -129,105 +123,35 @@ telephone_ai_anywhere/
 
 | 层级 | 说明 | 更新策略 |
 |------|------|---------|
-| 感性层 (emotional) | 分析用户情感状态和态度 | 每次对话后更新，滚动保留最近 10 条 |
-| 理性层 (rational) | 构建用户画像（兴趣/专业/风格） | 累积足够消息后整体重写 |
-| 历史层 (historical) | 所有对话的长期记忆 | 每次对话后追加 |
-| 通用层 (general) | 用户上传的知识库文档 | 手动上传文本 / PDF / 图片 |
+| **感性层 (emotional)** | 分析用户情感状态和态度 | 每次对话后更新，滚动保留最近 10 条 |
+| **理性层 (rational)** | 构建用户画像（兴趣/专业/风格） | 累积足够消息后整体重写 |
+| **历史层 (historical)** | 所有对话的长期记忆 | 每次对话后追加 |
+| **通用层 (general)** | 用户上传的知识库文档 | 手动上传文本 / PDF / 图片 |
 
-### AI Agent 工具链
+### 架构文档
 
-Agent 当前采用“LLM 路由优先 + 规则兜底”机制：
-
-1. 先由 `decideRouteWithLLM` 分类 `image_gen / web_search / time_query / chat`
-2. 当 LLM 路由失败或置信度不足时，降级到规则检测：
-       - `detectImageGenIntent`
-       - `detectTimeIntent`
-       - `detectWebSearchIntent`
-3. 最终进入对应工具链或普通对话
-
-> 说明：图片消息在需要时可进入“视觉识别 → 联网检索 → LLM 综合回答”的组合链路，
-> 并支持“描述刚才生成的图片”这类跨轮图片引用。
-
-### 网络容错机制
-
-- API 请求自动重试（最多 2 次，间隔 1.5s）
-- 4xx 客户端错误不重试（如 401/429）
-- XHR 流式传输 120s 超时保护
-- 语音识别 30s 超时 + 多方案降级
-- 用户友好的错误提示（中文）
+详细的架构设计请参考以下文档：
+- [架构总览 (Architecture Overview)](架构文档/log7_architecture_overview.md)
+- [消息管线 (Message Pipeline)](架构文档/log8_message_pipeline.md)
+- [Agent 路由 (Agent Routing)](架构文档/log9_agent_routing.md)
+- [RAG 架构 (RAG Architecture)](架构文档/log10_rag_architecture.md)
+- [流式状态 (Streaming State)](架构文档/log11_streaming_state.md)
+- [数据流与错误处理 (Dataflow Errors)](架构文档/log12_dataflow_errors.md)
 
 ---
 
-## 技术栈
+## ⌨️ 开发与构建 (Development)
 
-| 领域 | 技术方案 |
-|------|---------|
-| 框架 | React Native (Expo SDK 54) |
-| 导航 | Expo Router 6 |
-| 状态管理 | Zustand |
-| 数据库 | expo-sqlite (SQLite) |
-| LLM | DeepSeek V3 / 通义千问 / Kimi / GLM / GPT (OpenAI 格式) |
-| Embedding | 阿里云 DashScope text-embedding-v3（文本）/ qwen3-vl-embedding（非文本） |
-| ASR | 阿里云 Paraformer v2 (FormData 上传) |
-| TTS | expo-speech (系统原生) |
-| 联网搜索 | DashScope Qwen enable_search |
-| AI 绘图 | 阿里云 DashScope qwen-image-max / wanx-v1 |
-| 流式传输 | XMLHttpRequest SSE (React Native 兼容) |
-| Markdown | react-native-markdown-display |
-| 富文本图形渲染 | react-native-webview (KaTeX / Mermaid) |
+### 技术栈
 
----
+- **框架**: React Native (Expo SDK 54)
+- **导航**: Expo Router 6
+- **状态管理**: Zustand
+- **数据库**: expo-sqlite (SQLite)
+- **流式传输**: XMLHttpRequest SSE (React Native 兼容)
+- **富文本渲染**: react-native-markdown-display, react-native-webview (KaTeX / Mermaid)
 
-## 快速开始
-
-### 环境要求
-
-- Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
-- Android Studio (用于 Android 构建) 或 iOS 开发环境
-
-### 安装和运行
-
-```bash
-# 克隆项目
-git clone <repo-url>
-cd telephone_ai_anywhere
-
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npx expo start
-
-# 运行 Android
-npx expo run:android
-```
-
-### API 配置
-
-在应用的 **设置** 页面中配置：
-
-1. **对话模型 API Key**（必需）— 支持 DeepSeek / 通义千问 / Kimi / GLM / OpenAI
-2. **阿里云 DashScope API Key** — 用于 Embedding(RAG)、语音识别、图片生成
-3. **百度千帆 API Key** — 预留字段（当前默认不使用）
-
-> 说明：当前联网搜索默认走 DashScope（与 Embedding/生图复用同一 Key）。
-
----
-
-## 语音通话功能
-
-类似豆包电话功能，全屏通话界面：
-
-- 点击通话按钮进入通话模式
-- **按住说话**：按住大圆按钮录音，松开自动识别并发送
-- AI 回复后自动 TTS 朗读
-- 通话中拥有完整的 RAG 记忆上下文
-- 通话记录自动保存到当前对话中
-
----
-
-## 构建发布
+### 构建命令
 
 ```bash
 # 本地 debug APK
@@ -244,24 +168,18 @@ npm run build:aab
 ```
 
 ---
-## 项目架构文档
 
-- [architecture_overview.md](架构文档/log7_architecture_overview.md)
-- [message_pipeline.md](架构文档/log8_message_pipeline.md)
-- [agent_routing.md](架构文档/log9_agent_routing.md)
-- [rag_architecture.md](架构文档/log10_rag_architecture.md)
-- [streaming_state.md](架构文档/log11_streaming_state.md)
-- [dataflow_errors.md](架构文档/log12_dataflow_errors.md)
+## 📄 许可证与声明 (License & Disclaimer)
 
----
+### 许可证
 
-## 关键约束速查
+本项目采用 **GNU General Public License v3.0 (GPL-3.0)** 许可证。这意味着你可以自由使用、修改、分发本软件，但任何基于本软件的衍生作品也必须以 GPL-3.0 协议开源。详情请参阅 [LICENSE](LICENSE) 文件。
 
-- **路由策略**：当前以代码为准，`agent.ts` 为“LLM 路由优先 + 规则兜底”。
-- **流式契约**：`onStream(chunk, done)` 中 `done=true` 必须立即 flush 并清理 `isLoading`。
-- **键盘与安全区适配**：聊天页/侧栏均基于 `useSafeAreaInsets`，Android 真机优先保证“顶部不遮挡、输入栏不被键盘吞没”。
-- **多附件持久化**：消息优先走 `Message.attachments` / `messages.attachments_json`，并兼容历史单附件字段。
-- **RAG 模型策略**：纯文本默认 `text-embedding-v3`；图片/PDF 等非文本默认 `qwen3-vl-embedding`；图片入库走快速向量化，不依赖 `qwen-vl-max` OCR。
-## 许可证
+### 数据与隐私
 
-MIT License
+- **数据存储**：所有对话记录、知识库向量、用户配置均**仅存储在用户设备本地**，开发者无法访问任何用户数据。
+- **API密钥**：用户自行配置的 API 密钥仅保存在本地，请求直接从设备发往相应服务商，不经过任何中转服务器。
+
+### 免责声明
+
+本软件按“现状”提供，不附带任何明示或暗示的保证。用户需自行承担使用本软件的全部风险。开发者不对任何因使用本软件造成的直接或间接损失承担责任。本项目使用的第三方 API 服务由相应服务商提供，开发者不对其服务可用性、准确性及合规性负责。本软件不得用于任何违反法律法规的目的。
