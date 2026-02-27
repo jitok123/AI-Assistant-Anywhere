@@ -55,7 +55,7 @@
 - Expo CLI (`npm install -g expo-cli`)
 - Android Studio (用于 Android 构建) 或 iOS 开发环境
 
-### 启动步骤
+### 启动步骤 (本地预览)
 
 ```bash
 # 1. 克隆项目
@@ -67,10 +67,9 @@ npm install
 
 # 3. 启动开发服务器
 npx expo start
-
-# 4. 运行 Android
-npx expo run:android
 ```
+
+> **💡 提示**：启动后，推荐使用手机下载 **Expo Go** App 扫描终端中的二维码进行实时预览。本项目主要依赖云端构建，未进行本地原生编译（`run:android`）的深度测试。
 
 ---
 
@@ -151,20 +150,23 @@ npx expo run:android
 - **流式传输**: XMLHttpRequest SSE (React Native 兼容)
 - **富文本渲染**: react-native-markdown-display, react-native-webview (KaTeX / Mermaid)
 
-### 构建命令
+### 构建与打包 (推荐云端构建)
+
+本项目强烈推荐使用 **Expo EAS (Expo Application Services)** 进行云端构建，这也是作者验证通过的标准流程：
+
+1. 将代码推送到你的 GitHub 仓库。
+2. 登录 [Expo 控制台](https://expo.dev/)，创建项目并关联该 GitHub 仓库。
+3. 在 Expo 网页端选择对应分支（如 `main`），使用 `preview` profile 触发 Android 构建。
+4. 构建完成后，直接扫码或下载 APK 安装到手机即可。
+
+*附：命令行构建参考（需自行配置对应环境）*
 
 ```bash
-# 本地 debug APK
-npm run build:apk:debug
+# EAS 云端构建 (命令行触发)
+eas build -p android --profile preview
 
-# 本地 release APK
+# 本地 release APK (需完善的 Android Studio 环境，未深度测试)
 npm run build:apk:local
-
-# EAS 云端构建
-npm run build:apk:eas
-
-# 生产 AAB（Google Play）
-npm run build:aab
 ```
 
 ---
