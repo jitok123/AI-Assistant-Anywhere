@@ -1,6 +1,6 @@
 # 🛡️ 数据流、错误处理与控制策略
 
-> 全链路数据流转 + 错误恢复 + 降级策略
+> V2.0：全链路数据流转 + 错误恢复 + 降级策略
 
 ---
 
@@ -41,7 +41,7 @@ flowchart TB
         QW_SEARCH["DashScope Qwen<br/>(联网搜索)"]
         QW_IMAGE["DashScope<br/>qwen-image-max<br/>(文生图)"]
         QW_VISION["DashScope<br/>qwen-vl-max<br/>(图片理解)"]
-        QW_EMB["DashScope<br/>text-embedding-v3<br/>(嵌入)"]
+        QW_EMB["DashScope<br/>text-embedding-v3 / qwen3-vl-embedding<br/>(嵌入)"]
     end
 
     subgraph DB_Layer["💾 持久化"]

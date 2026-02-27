@@ -14,12 +14,14 @@
 ## Streaming + loading behavior (critical)
 - Streaming is implemented with XHR SSE parser in `src/services/deepseek.ts` (`streamWithXHR`) because RN fetch streaming is unreliable.
 - Preserve `onStream(chunk, done)` semantics; `done=true` must clear loading quickly.
+- Stream UI updates can be throttled for performance (current target ~66ms), but `done=true` must always bypass throttle and flush immediately.
 - `isLoading` has multiple safeguards in store (stream done, catch paths, and `finally` + 120s safety timeout). Avoid changes that can leave loading stuck.
 - Post-conversation heavy jobs are intentionally debounced/asynchronous; avoid adding synchronous expensive work in the message-response hot path.
 
 ## Android keyboard + input visibility (critical)
 - Chat input must remain visible when software keyboard is opened on Android real devices.
 - Keep keyboard behavior aligned across config and runtime (`app.json` keyboard layout mode + chat page layout strategy).
+- For this project, avoid double-avoidance on Android (`softwareKeyboardLayoutMode=resize` + `KeyboardAvoidingView` together can cause bottom gap on some OEM ROMs).
 - If chat-page layout is adjusted (`app/index.tsx`, `ChatInput`), verify no regression in: keyboard open, first message sent, second message send, and drawer/settings clickability.
 - Avoid solutions that only pass emulator; prioritize behavior on physical Android devices (e.g., iQOO/MIUI/ColorOS variants).
 
@@ -27,6 +29,7 @@
 - DeepSeek is text-centric in this app; prioritize readability over decorative UI.
 - Keep Chinese copy concise and natural; improve line-height, paragraph spacing, and visual hierarchy before adding extra visual ornaments.
 - Markdown rendering should avoid noisy formatting and preserve long-form answer readability.
+- For structured content, support readable renderers: LaTeX block math and Mermaid diagrams (with tap-to-zoom preview) without degrading plain-text readability.
 
 ## Multi-attachment conventions (new)
 - `sendMessage` supports mixed attachments in one turn (`attachments`), including multiple images and files.

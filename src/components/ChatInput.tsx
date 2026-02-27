@@ -1,8 +1,8 @@
 /**
- * 聊天输入框组件
- * 支持文本输入、图片选择
+ * 聊天输入框组件（V2.0）
+ * 支持文本、多图片、多文件附件与 Android 键盘抬升适配。
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Alert,
   Platform,
+  Keyboard,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../hooks/useTheme';
@@ -41,6 +42,7 @@ export function ChatInput() {
   const colors = useTheme();
   const [text, setText] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef<TextInput>(null);
 
   const { sendMessage, isLoading, stopGeneration } =
@@ -155,8 +157,23 @@ export function ChatInput() {
     ]);
   };
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (event) => {
+      const h = event?.endCoordinates?.height || 0;
+      setKeyboardHeight(Math.max(0, h - 4));
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
-      <View style={styles.root}>
+      <View style={[styles.root, Platform.OS === 'android' && keyboardHeight > 0 ? { marginBottom: keyboardHeight } : null]}>
         {/* 图片预览 */}
         {pendingAttachments.length > 0 && (
           <View style={[styles.imagePreviewRow, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
@@ -248,7 +265,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    paddingVertical: 8,
     borderTopWidth: 0.8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },

@@ -51,12 +51,6 @@ export async function multiLayerSearch(
   if (!settings.dashscopeApiKey) return [];
 
   try {
-    const queryEmbedding = await getEmbedding(
-      query,
-      settings.dashscopeApiKey,
-      resolveRagEmbeddingModel(settings, 'text'),
-    );
-
     const results: RagSearchResult[] = [];
 
     // 各层分配检索数量
@@ -71,16 +65,36 @@ export async function multiLayerSearch(
       const chunks = await getAllRagChunksWithEmbeddings(config.layer);
       if (chunks.length === 0) continue;
 
-      const layerResults = findTopK(queryEmbedding, chunks, config.k);
-      results.push(
-        ...layerResults.map((r) => ({
-          id: r.id,
-          content: r.content,
-          score: r.score * config.boost, // 层级加权
-          source: 'rag',
-          layer: (config.layer || 'general') as RagLayer,
-        })),
-      );
+      // 关键：按 embedding 模型分组检索，避免 text / vl 向量维度不一致导致分数为 0
+      const modelGroups = new Map<string, typeof chunks>();
+      for (const chunk of chunks) {
+        const model = chunk.embeddingModel || resolveRagEmbeddingModel(settings, 'text');
+        const list = modelGroups.get(model) || [];
+        list.push(chunk as any);
+        modelGroups.set(model, list);
+      }
+
+      for (const [model, group] of modelGroups.entries()) {
+        try {
+          const queryEmbedding = await getEmbedding(
+            query,
+            settings.dashscopeApiKey,
+            model,
+          );
+          const layerResults = findTopK(queryEmbedding, group as any, config.k);
+          results.push(
+            ...layerResults.map((r) => ({
+              id: r.id,
+              content: r.content,
+              score: r.score * config.boost, // 层级加权
+              source: 'rag',
+              layer: (config.layer || 'general') as RagLayer,
+            })),
+          );
+        } catch (embErr: any) {
+          console.warn(`[RAG] 跳过模型 ${model} 的检索（embedding失败）:`, embErr?.message || embErr);
+        }
+      }
     }
 
     // 按分数排序，去重，取 top K

@@ -1,9 +1,12 @@
 /**
- * 聊天消息气泡组件
+ * 聊天消息气泡组件（V2.0）
+ * 支持 Markdown / LaTeX / Mermaid / 附件与工具调用可视化。
  */
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Modal, Pressable } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Markdown from 'react-native-markdown-display';
+import { WebView } from 'react-native-webview';
 import { useTheme } from '../hooks/useTheme';
 import { useAppStore } from '../store';
 import { getUserBubbleColorByStyle, Typography } from '../constants/theme';
@@ -13,6 +16,154 @@ import { saveImageToGallery } from '../utils/fileUtils';
 
 interface Props {
   message: Message;
+}
+
+type RichSegment =
+  | { type: 'text'; value: string }
+  | { type: 'latex'; value: string }
+  | { type: 'mermaid'; value: string };
+
+function stripLatexFence(raw: string): string {
+  const t = raw.trim();
+  if (t.startsWith('$$') && t.endsWith('$$')) {
+    return t.slice(2, -2).trim();
+  }
+  if (t.startsWith('\\[') && t.endsWith('\\]')) {
+    return t.slice(2, -2).trim();
+  }
+  if (t.startsWith('\\(') && t.endsWith('\\)')) {
+    return t.slice(2, -2).trim();
+  }
+  if (t.startsWith('$') && t.endsWith('$') && t.length > 2) {
+    return t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+function parseRichContentSegments(content: string): RichSegment[] {
+  const mermaidRegex = /```mermaid\s*([\s\S]*?)```/gi;
+  const segments: RichSegment[] = [];
+  let cursor = 0;
+
+  const pushTextWithLatex = (text: string) => {
+    if (!text) return;
+    const latexRegex = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$[^$\n]+\$)/g;
+    let innerCursor = 0;
+    let latexMatch: RegExpExecArray | null;
+
+    while ((latexMatch = latexRegex.exec(text)) !== null) {
+      const before = text.slice(innerCursor, latexMatch.index);
+      if (before) segments.push({ type: 'text', value: before });
+      const latexRaw = latexMatch[0];
+      if (latexRaw.trim()) {
+        segments.push({ type: 'latex', value: stripLatexFence(latexRaw) });
+      }
+      innerCursor = latexMatch.index + latexRaw.length;
+    }
+
+    const tail = text.slice(innerCursor);
+    if (tail) segments.push({ type: 'text', value: tail });
+  };
+
+  let m: RegExpExecArray | null;
+  while ((m = mermaidRegex.exec(content)) !== null) {
+    const before = content.slice(cursor, m.index);
+    pushTextWithLatex(before);
+
+    const chart = m[1]?.trim();
+    if (chart) segments.push({ type: 'mermaid', value: chart });
+    cursor = m.index + m[0].length;
+  }
+
+  pushTextWithLatex(content.slice(cursor));
+  return segments.filter((seg) => seg.value.trim().length > 0);
+}
+
+function buildLatexHtml(latex: string, textColor: string, darkBg = false): string {
+  const bgColor = darkBg ? '#111827' : 'transparent';
+  const safeLatex = latex
+    .replace(/\\begin\{document\}|\\end\{document\}/g, '')
+    .trim();
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <style>
+    html, body { margin:0; padding:0; background:${bgColor}; overflow:auto; width:100%; height:100%; }
+    #math { color:${textColor}; font-size:1.08rem; padding:8px 10px; line-height:1.4; }
+    .err { opacity: 0.85; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="math"></div>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script>
+    (function () {
+      var target = document.getElementById('math');
+      var input = ${JSON.stringify(safeLatex)};
+      try {
+        katex.render(input, target, { displayMode: true, throwOnError: false, strict: 'ignore', trust: true });
+      } catch (e) {
+        try {
+          target.innerHTML = '<div class="err">LaTeX 渲染失败，以下为源码：\\n\\n' + input.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        } catch (_e) {
+          target.textContent = input;
+        }
+      }
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+function buildMermaidHtml(chart: string, darkMode: boolean, zoomEnabled = false, darkBg = false): string {
+  const theme = darkMode ? 'dark' : 'default';
+  const bgColor = darkBg ? '#111827' : 'transparent';
+  const zoomMeta = zoomEnabled
+    ? '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=8, minimum-scale=0.5, user-scalable=yes" />'
+    : '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />';
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  ${zoomMeta}
+  <style>
+    html, body { margin:0; padding:0; background:${bgColor}; width: 100%; height: 100%; }
+    body { ${zoomEnabled ? 'overflow:auto;' : 'overflow:hidden;'} }
+    #wrap { box-sizing: border-box; padding: 16px; width: 100%; min-height: 100%; display: flex; justify-content: center; align-items: center; }
+    .mermaid { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 100%; text-align: center; }
+    .mermaid svg { max-width: 100%; height: auto; }
+    .err { color: #E5E7EB; opacity: 0.9; font-size: 13px; line-height: 1.6; white-space: pre-wrap; text-align: left; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <pre class="mermaid">${chart
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')}</pre>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    (async function () {
+      try {
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: '${theme}' });
+        const nodes = document.querySelectorAll('.mermaid');
+        await mermaid.run({ nodes: nodes });
+      } catch (e) {
+        var wrap = document.getElementById('wrap');
+        if (wrap) {
+          wrap.innerHTML = '<div class="err">Mermaid 渲染失败，以下为源码：\\n\\n' + ${JSON.stringify(chart)}.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>`;
 }
 
 /** 移除 Markdown 图片语法，避免 react-native-markdown-display 的 key prop 崩溃 */
@@ -26,14 +177,29 @@ function MessageBubbleImpl({ message }: Props) {
   const { userDisplayName, userAvatarEmoji, userBubbleStyle, theme } = useAppStore((s) => s.settings);
   const isUser = message.role === 'user';
   const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+  const [mermaidPreview, setMermaidPreview] = React.useState<string | null>(null);
+  const [latexPreview, setLatexPreview] = React.useState<string | null>(null);
   const isDark = theme === 'dark';
   const userBubbleColor = getUserBubbleColorByStyle(userBubbleStyle, isDark);
+  const sanitizedContent = stripMarkdownImages(message.content || '');
+  const richSegments = React.useMemo(
+    () => parseRichContentSegments(sanitizedContent),
+    [sanitizedContent]
+  );
+  const shouldFallbackToPlainMarkdown =
+    sanitizedContent.length > 16000 || richSegments.length > 16;
+  const hasRichSegments =
+    !shouldFallbackToPlainMarkdown && richSegments.some((seg) => seg.type !== 'text');
 
   const bubbleStyle = isUser
     ? [styles.bubble, styles.userBubble, { backgroundColor: userBubbleColor }]
     : [styles.bubble, styles.aiBubble, { backgroundColor: colors.aiBubble, borderColor: colors.border }];
 
   const textColor = isUser ? colors.userBubbleText : colors.aiBubbleText;
+  const displayAvatarEmoji = React.useMemo(
+    () => Array.from((userAvatarEmoji || '🙂').trim()).slice(0, 2).join('') || '🙂',
+    [userAvatarEmoji]
+  );
 
   const mdStyles = {
     body: { color: textColor, fontSize: 16, lineHeight: 29, fontFamily: Typography.fontFamily, letterSpacing: 0.2 },
@@ -107,7 +273,7 @@ function MessageBubbleImpl({ message }: Props) {
       <View style={[styles.avatar, { borderColor: isUser ? colors.primary : colors.border }]}>
         {isUser ? (
           <Text style={[styles.avatarText, { color: colors.primary }]}>
-            {(userAvatarEmoji || '🙂').slice(0, 2)}
+            {displayAvatarEmoji}
           </Text>
         ) : (
           <Image source={APP_AVATAR} style={styles.avatarImage} />
@@ -217,9 +383,64 @@ function MessageBubbleImpl({ message }: Props) {
               <Text style={{ color: textColor, fontSize: 16, lineHeight: 29, fontFamily: Typography.fontFamily, letterSpacing: 0.2 }}>
                 {message.content}
               </Text>
+            ) : hasRichSegments ? (
+              <View>
+                {richSegments.map((seg, idx) => {
+                  if (seg.type === 'text') {
+                    return (
+                      <View key={`text-${idx}`} style={styles.richTextChunk}>
+                        <Markdown style={mdStyles as any}>{seg.value}</Markdown>
+                      </View>
+                    );
+                  }
+
+                  if (seg.type === 'latex') {
+                    const lineCount = seg.value.split('\n').length;
+                    const webHeight = Math.min(320, Math.max(88, 52 + lineCount * 28));
+                    return (
+                      <TouchableOpacity
+                        key={`latex-${idx}`}
+                        activeOpacity={0.85}
+                        onPress={() => setLatexPreview(seg.value)}
+                        style={[styles.latexCard, { borderColor: colors.border }]}
+                      >
+                        <WebView
+                          originWhitelist={["*"]}
+                          source={{ html: buildLatexHtml(seg.value, textColor) }}
+                          style={{ height: webHeight, backgroundColor: 'transparent' }}
+                          scrollEnabled={false}
+                          javaScriptEnabled
+                          pointerEvents="none"
+                        />
+                      </TouchableOpacity>
+                    );
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={`mermaid-${idx}`}
+                      activeOpacity={0.85}
+                      onPress={() => setMermaidPreview(seg.value)}
+                      style={[styles.mermaidCard, { borderColor: colors.border }]}
+                    >
+                      <View style={[styles.mermaidHeader, { borderBottomColor: colors.border }]}>
+                        <Text style={[styles.mermaidTitle, { color: colors.textSecondary }]}>Mermaid 图表（点击放大）</Text>
+                      </View>
+                      <WebView
+                        originWhitelist={["*"]}
+                        source={{ html: buildMermaidHtml(seg.value, isDark, false, false) }}
+                        style={styles.mermaidWebView}
+                        scrollEnabled={false}
+                        javaScriptEnabled
+                        pointerEvents="none"
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             ) : (
               <Markdown style={mdStyles as any}>
-                {stripMarkdownImages(message.content)}
+                {sanitizedContent}
               </Markdown>
             )
           ) : (
@@ -262,6 +483,94 @@ function MessageBubbleImpl({ message }: Props) {
             />
           )}
         </Pressable>
+      </Modal>
+
+      <Modal
+        visible={!!mermaidPreview}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setMermaidPreview(null)}
+      >
+        <View style={styles.richPreviewBackdrop}>
+          <View style={styles.mermaidModalHeader}>
+            <Text style={styles.mermaidModalTitle}>Mermaid 图表预览（可双指缩放）</Text>
+            <View style={styles.previewActionRow}>
+              <TouchableOpacity 
+                onPress={async () => {
+                  if (mermaidPreview) {
+                    await Clipboard.setStringAsync(mermaidPreview);
+                    Alert.alert('已复制', 'Mermaid 源码已复制到剪贴板');
+                  }
+                }} 
+                style={styles.mermaidCloseBtn}
+              >
+                <Text style={styles.mermaidCloseText}>复制源码</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setMermaidPreview(null)} style={styles.mermaidCloseBtn}>
+                <Text style={styles.mermaidCloseText}>关闭</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          {mermaidPreview && (
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: buildMermaidHtml(mermaidPreview, isDark, true, true) }}
+              style={styles.mermaidModalWebView}
+              javaScriptEnabled
+              scrollEnabled
+              scalesPageToFit={true}
+              bounces={true}
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              androidLayerType="hardware"
+              renderToHardwareTextureAndroid
+            />
+          )}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!latexPreview}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setLatexPreview(null)}
+      >
+        <View style={styles.richPreviewBackdrop}>
+          <View style={styles.mermaidModalHeader}>
+            <Text style={styles.mermaidModalTitle}>LaTeX 公式预览</Text>
+            <View style={styles.previewActionRow}>
+              <TouchableOpacity 
+                onPress={async () => {
+                  if (latexPreview) {
+                    await Clipboard.setStringAsync(latexPreview);
+                    Alert.alert('已复制', 'LaTeX 源码已复制到剪贴板');
+                  }
+                }} 
+                style={styles.mermaidCloseBtn}
+              >
+                <Text style={styles.mermaidCloseText}>复制源码</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setLatexPreview(null)} style={styles.mermaidCloseBtn}>
+                <Text style={styles.mermaidCloseText}>关闭</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          {latexPreview && (
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: buildLatexHtml(latexPreview, '#FFFFFF', true) }}
+              style={styles.mermaidModalWebView}
+              javaScriptEnabled
+              scrollEnabled
+              scalesPageToFit={true}
+              bounces={true}
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              androidLayerType="hardware"
+              renderToHardwareTextureAndroid
+            />
+          )}
+        </View>
       </Modal>
     </View>
   );
@@ -440,8 +749,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
   },
+  richPreviewBackdrop: {
+    flex: 1,
+    backgroundColor: '#111827',
+    paddingTop: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
   previewImage: {
     width: '100%',
     height: '80%',
+  },
+  richTextChunk: {
+    marginBottom: 4,
+  },
+  latexCard: {
+    borderWidth: 0.8,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  mermaidCard: {
+    borderWidth: 0.8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  mermaidHeader: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderBottomWidth: 0.8,
+  },
+  mermaidTitle: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily,
+  },
+  mermaidWebView: {
+    height: 230,
+    backgroundColor: 'transparent',
+  },
+  mermaidModalHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginTop: 12,
+  },
+  previewActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mermaidModalTitle: {
+    color: '#EAF0FF',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily,
+  },
+  mermaidCloseBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  mermaidCloseText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily,
+  },
+  mermaidModalWebView: {
+    width: '100%',
+    flex: 1,
+    backgroundColor: '#111827',
   },
 });

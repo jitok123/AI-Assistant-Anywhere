@@ -1,6 +1,6 @@
 # 🌊 流式传输与状态管理
 
-> XHR SSE 解析 + Zustand 状态更新 + React 重渲染链路
+> V2.0：XHR SSE 解析 + Zustand 状态更新 + React 重渲染链路（含节流刷新与多重保险）
 
 ---
 
@@ -138,6 +138,13 @@ flowchart TD
     style END fill:#A5D6A7,stroke:#1B5E20
 ```
 
+### 3.1 流式 UI 更新节流（新增）
+
+- `streamCallback` 仍保持 `onStream(chunk, done)` 语义不变。
+- 为降低 Android 真机在长回复时的重渲染压力，Store 现在对消息气泡更新做了约 `66ms` 的节流刷新。
+- `done=true` 不节流，立即 flush 到 UI，并立刻清理 `isLoading`，保证“完成即停”。
+- `finally` 会额外清理节流定时器，避免会话结束后残留异步更新。
+
 ---
 
 ## 4. React 组件数据绑定
@@ -162,7 +169,9 @@ flowchart LR
     end
 
     subgraph Bubble["MessageBubble.tsx"]
-        MD["react-native-markdown-display<br/>stripMarkdownImages(content)"]
+        MD["react-native-markdown-display<br/>普通 Markdown 文本"]
+        LATEX["WebView + KaTeX<br/>块级公式渲染"]
+        MER["WebView + Mermaid<br/>图表渲染 + 放大预览"]
         IMG["Image<br/>source={generatedImageUrl}"]
         TC["ToolCall 展示<br/>tool_calls[]"]
     end
@@ -171,6 +180,8 @@ flowchart LR
     IL --> S2 --> LI
     FL --> MB
     MB --> MD
+    MB --> LATEX
+    MB --> MER
     MB --> IMG
     MB --> TC
 

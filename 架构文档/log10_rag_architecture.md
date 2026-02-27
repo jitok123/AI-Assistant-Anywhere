@@ -1,6 +1,6 @@
 # 📚 多层 RAG 记忆架构
 
-> ragSpecialist.ts + rag.ts + embedding.ts + vectorSearch.ts + database.ts
+> V2.0：ragSpecialist.ts + rag.ts + embedding.ts + vectorSearch.ts + database.ts
 
 ---
 
@@ -21,7 +21,7 @@ graph TB
     end
 
     subgraph Process["检索流程"]
-        EMB["text-embedding-v3<br/>将 query 向量化"]
+        EMB["按分组模型向量化 query<br/>text-embedding-v3 / qwen3-vl-embedding"]
         VS["余弦相似度 TopK<br/>vectorSearch.ts"]
         FILTER["相似度阈值过滤"]
     end
@@ -108,7 +108,7 @@ flowchart TD
     PICK["选择文件\n文本 / PDF / 图片"] --> KIND{"文件类型判断"}
     KIND -->|文本| TXT["readTextFileSafely\n读取正文"]
     KIND -->|PDF| PDF["readPdfTextSafely\n轻量解析 BT/ET 文本块"]
-    KIND -->|图片| IMG["qwen-vl-max 视觉提取\nOCR + 关键信息摘要"]
+    KIND -->|图片| IMG["快速入库：qwen3-vl-embedding\n直接图像向量化（不做 qwen-vl-max OCR）"]
 
     TXT --> MERGE["补充来源元信息\n文件名 + MIME"]
     PDF --> MERGE
@@ -117,7 +117,7 @@ flowchart TD
     MERGE --> CHUNK{"分块策略"}
     CHUNK -->|Markdown| MDCHUNK["chunkMarkdown"]
     CHUNK -->|其他文本| TXCHUNK["chunkText"]
-    MDCHUNK --> EMB["text-embedding-v3 批量向量化"]
+    MDCHUNK --> EMB["按类型向量化：文本 text-embedding-v3 / 非文本 qwen3-vl-embedding"]
     TXCHUNK --> EMB
     EMB --> DB["写入 rag chunks\nsource=upload, layer=general"]
 ```
@@ -166,7 +166,7 @@ flowchart LR
     end
 
     subgraph API["DashScope API"]
-        REQ["POST /compatible-mode/v1/embeddings<br/>model: text-embedding-v3<br/>input: [texts]<br/>dimensions: 1024<br/>encoding_format: float"]
+        REQ["POST /compatible-mode/v1/embeddings<br/>model: text-embedding-v3（文本）<br/>input: [texts]<br/>dimensions: 1024<br/>encoding_format: float"]
     end
 
     subgraph Output

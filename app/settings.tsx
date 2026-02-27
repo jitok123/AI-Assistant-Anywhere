@@ -1,5 +1,6 @@
 /**
- * 设置页面 — 重点突出 AI 模型选择
+ * 设置页面（V2.0）
+ * 聚焦：模型配置、RAG 参数、外观偏好与数据管理。
  */
 import React, { useState } from 'react';
 import {
@@ -530,11 +531,15 @@ export default function SettingsScreen() {
                 styles.smallInput,
                 { color: colors.text, borderColor: colors.border },
               ]}
-              value={settings.userAvatarEmoji}
-              onChangeText={(v) => updateSettings({ userAvatarEmoji: (v || '🙂').slice(0, 2) })}
+              value={settings.userAvatarEmoji || ''}
+              onChangeText={(v) => updateSettings({ userAvatarEmoji: v })}
+              onBlur={() => {
+                const normalized = Array.from((settings.userAvatarEmoji || '').trim()).slice(0, 2).join('');
+                updateSettings({ userAvatarEmoji: normalized || '🙂' });
+              }}
               placeholder="🙂"
               placeholderTextColor={colors.textTertiary}
-              maxLength={2}
+              maxLength={8}
             />
           </Row>
           <Row label="AI 助手头像" hint="全局统一使用当前品牌头像（聊天/知识库/通话/侧栏）">

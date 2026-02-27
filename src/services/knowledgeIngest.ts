@@ -1,16 +1,16 @@
 /**
- * 知识库文件入库前处理：提取可用于 embedding 的纯文本
+ * 知识库文件入库前处理：提取可用于 embedding 的文本 / 多模态输入
  */
-import type { ApiMessage } from '../types';
+import type { EmbeddingInputItem } from './embedding';
 import type { KnowledgeUploadFile } from '../utils/fileUtils';
 import { imageToBase64, readPdfTextSafely, readTextFileSafely } from '../utils/fileUtils';
-import { chatCompletion } from './deepseek';
-import { getDashScopeCompatibleBaseUrl } from '../config/api';
 
 export interface KnowledgeExtractionResult {
   text: string;
   warnings: string[];
   sourceKind: KnowledgeUploadFile['kind'];
+  /** 可选：直接用于向量化的原始输入（如图片） */
+  embeddingInputs?: EmbeddingInputItem[];
 }
 
 function wrapWithMeta(file: KnowledgeUploadFile, body: string): string {
@@ -23,39 +23,17 @@ function wrapWithMeta(file: KnowledgeUploadFile, body: string): string {
   ].join('\n');
 }
 
-async function extractFromImage(file: KnowledgeUploadFile, dashscopeApiKey: string): Promise<string> {
+async function buildImageEmbeddingInput(file: KnowledgeUploadFile): Promise<EmbeddingInputItem> {
   const imageData = await imageToBase64(file.uri);
-
-  const messages: ApiMessage[] = [
-    {
-      role: 'system',
-      content:
-        '你是知识库预处理助手。任务：从图片中提取可检索文本。'
-        + '输出要求：1) 尽量OCR提取原文；2) 再给出3-8条事实要点；3) 用中文；4) 禁止编造。',
-    },
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: `请提取这张图片中的文字与关键信息，用于构建本地知识库。文件名：${file.name}` },
-        { type: 'image_url', image_url: { url: imageData } },
-      ],
-    },
-  ];
-
-  return chatCompletion(
-    messages,
-    dashscopeApiKey,
-    getDashScopeCompatibleBaseUrl(),
-    'qwen-vl-max',
-    undefined,
-    0.2,
-    1800,
-  );
+  return {
+    kind: 'image',
+    image: imageData,
+  };
 }
 
 export async function extractKnowledgeText(
   file: KnowledgeUploadFile,
-  dashscopeApiKey: string,
+  _dashscopeApiKey: string,
 ): Promise<KnowledgeExtractionResult> {
   const warnings: string[] = [];
 
@@ -82,21 +60,19 @@ export async function extractKnowledgeText(
 
   if (file.kind === 'image') {
     try {
-      const visualText = await extractFromImage(file, dashscopeApiKey);
-      if (!visualText.trim()) {
-        warnings.push('图片识别结果为空，仅记录文件元信息');
-        return {
-          text: wrapWithMeta(file, '图片已上传，但未识别到可用文本。'),
-          warnings,
-          sourceKind: file.kind,
-        };
-      }
-      return { text: wrapWithMeta(file, visualText), warnings, sourceKind: file.kind };
-    } catch (error) {
-      console.warn('图片知识提取失败:', error);
-      warnings.push('图片识别失败，仅记录文件元信息');
+      const embeddingInput = await buildImageEmbeddingInput(file);
+      warnings.push('图片已走快速入库：使用 qwen3-vl-embedding 直接向量化，不再调用 qwen-vl-max OCR。');
       return {
-        text: wrapWithMeta(file, '图片识别失败，建议稍后重试。'),
+        text: wrapWithMeta(file, '图片已入库（快速模式：不做 OCR 全文提取）。可通过图文语义检索召回。'),
+        warnings,
+        sourceKind: file.kind,
+        embeddingInputs: [embeddingInput],
+      };
+    } catch (error) {
+      console.warn('图片快速入库失败:', error);
+      warnings.push('图片向量化准备失败，仅记录文件元信息');
+      return {
+        text: wrapWithMeta(file, '图片入库失败，建议稍后重试。'),
         warnings,
         sourceKind: file.kind,
       };

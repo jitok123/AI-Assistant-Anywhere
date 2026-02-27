@@ -26,35 +26,49 @@ async function getEmbeddingByVl(
   apiKey: string,
   model: string,
 ): Promise<number[]> {
-  const input = item.kind === 'image'
-    ? [{ image: item.image }]
-    : [{ text: (item.text || '').trim() }];
+  const content = item.kind === 'image'
+    ? { image: item.image }
+    : { text: (item.text || '').trim() };
 
-  const response = await fetch(DASHSCOPE_MULTIMODAL_EMBEDDING_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'X-DashScope-Async': 'false',
-    },
-    body: JSON.stringify({ model, input }),
-  });
+  const payloads = [
+    // DashScope 多模态 embedding 常见格式
+    { model, input: { contents: [content] } },
+    // 兼容旧格式回退
+    { model, input: [content] },
+  ];
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`多模态 Embedding 请求失败 (${response.status}): ${errorText}`);
+  let lastError = '';
+
+  for (const payload of payloads) {
+    const response = await fetch(DASHSCOPE_MULTIMODAL_EMBEDDING_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        'X-DashScope-Async': 'false',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      lastError = `(${response.status}) ${errorText}`;
+      continue;
+    }
+
+    const data = await response.json();
+    const embedding = data?.output?.embeddings?.[0]?.embedding
+      || data?.output?.embeddings?.[0]?.vector
+      || data?.data?.[0]?.embedding;
+
+    if (embedding && Array.isArray(embedding)) {
+      return embedding;
+    }
+
+    lastError = '返回数据格式异常';
   }
 
-  const data = await response.json();
-  const embedding = data?.output?.embeddings?.[0]?.embedding
-    || data?.output?.embeddings?.[0]?.vector
-    || data?.data?.[0]?.embedding;
-
-  if (!embedding || !Array.isArray(embedding)) {
-    throw new Error('多模态 Embedding 返回数据格式异常');
-  }
-
-  return embedding;
+  throw new Error(`多模态 Embedding 请求失败: ${lastError}`);
 }
 
 /** 获取文本的 embedding 向量 */

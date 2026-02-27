@@ -1,8 +1,11 @@
-# 随身AI助手 (Telephone AI Anywhere)
+# 随身AI助手 (Telephone AI Anywhere) · V2.0
 
 > 一个全功能 AI 助手应用 — 多层记忆 · 联网搜索 · AI绘图 · 语音通话
 
+> 版本：**V2.0.0（2026-02）**
+
 ---
+
 
 ## 功能概览
 
@@ -17,6 +20,8 @@
 | 语音输入 | 阿里云 Paraformer ASR 语音识别 |
 | 图片理解 | 支持多模态模型（通义千问 VL 等），发送图片给 AI 分析 |
 | 文件附件对话 | 聊天输入支持多图片 + 多文件混合发送（文本文件自动提取节选用于上下文） |
+| 数学公式渲染 | 支持 LaTeX 块级公式（$$...$$ / \\[...\\]）正确排版显示，全屏预览支持复制源码 |
+| Mermaid 图表渲染 | 支持 Mermaid 代码块直接渲染，点击可全屏预览并双指缩放，支持复制源码 |
 | 生图下载 | 生成后的图片支持在消息气泡中一键保存到本地 |
 | 图片+联网同回合 | 图片理解与联网搜索可在同一轮自动串联（先看图，再检索，再综合回答） |
 | 时间工具 | 内置时间函数（当前时间/日期/星期/时间戳），并为模型注入“当前时间锚点” |
@@ -42,18 +47,18 @@ telephone_ai_anywhere/
 │
 ├── src/                          # 核心代码层
 │   ├── components/               # UI 组件
-│   │   ├── MessageBubble.tsx     # 消息气泡（Markdown / 图片 / 搜索引用 / 工具调用）
+│   │   ├── MessageBubble.tsx     # 消息气泡（Markdown / LaTeX / Mermaid / 图片 / 搜索引用 / 工具调用）
 │   │   ├── ChatInput.tsx         # 输入框（文本 / 图片 / 文件附件）
 │   │   └── ConversationDrawer.tsx # 对话列表侧边栏
 │   │
 │   ├── services/                 # 后端服务层
 │   │   ├── deepseek.ts           # LLM API 调用（XHR 流式 + 自动重试）
-│   │   ├── agent.ts              # AI Agent 引擎（关键词意图路由）
+│   │   ├── agent.ts              # AI Agent 引擎（LLM 路由优先 + 规则兜底）
 │   │   ├── ragSpecialist.ts      # 多层 RAG 记忆管理（感性/理性/历史层）
 │   │   ├── rag.ts                # 通用 RAG（知识库检索）
 │   │   ├── embedding.ts          # 文本向量化（DashScope Embedding）
 │   │   ├── voice.ts              # 语音服务（ASR + TTS + 超时处理）
-│   │   ├── webSearch.ts          # 联网搜索（百度千帆）
+│   │   ├── webSearch.ts          # 联网搜索（DashScope Qwen enable_search）
 │   │   ├── imageGen.ts           # AI 绘图（DashScope wanx）
 │   │   ├── errorHandler.ts       # 统一错误处理（可扩展 Sentry）
 │   │   └── database.ts           # SQLite 本地数据库
@@ -107,8 +112,8 @@ telephone_ai_anywhere/
     │                 │
     │           ┌─────┼─────┐
     │           ▼     ▼     ▼
-    │       联网搜索  绘图   直接回复
-    │       (百度)  (阿里云)
+       │       联网搜索  绘图   直接回复
+       │      (DashScope) (阿里云)
     │                 │
     └────────┬────────┘
              ▼
@@ -117,7 +122,7 @@ telephone_ai_anywhere/
              │
              ▼
        消息气泡渲染
-  (Markdown · 图片 · 搜索引用)
+       (Markdown · LaTeX · Mermaid · 图片 · 搜索引用)
 ```
 
 ### 多层 RAG 记忆系统
@@ -131,12 +136,14 @@ telephone_ai_anywhere/
 
 ### AI Agent 工具链
 
-Agent 使用“关键词意图路由”机制自主决策：
+Agent 当前采用“LLM 路由优先 + 规则兜底”机制：
 
-1. **image_gen** — 用户明确要求画图时触发
-2. **time_now** — 询问当前时间/日期/星期/时间戳时触发本地时间函数
-3. **web_search** — 需要实时信息、新闻、不确定事实时触发
-4. **直接回复** — 不需要工具时直接流式回答
+1. 先由 `decideRouteWithLLM` 分类 `image_gen / web_search / time_query / chat`
+2. 当 LLM 路由失败或置信度不足时，降级到规则检测：
+       - `detectImageGenIntent`
+       - `detectTimeIntent`
+       - `detectWebSearchIntent`
+3. 最终进入对应工具链或普通对话
 
 > 说明：图片消息在需要时可进入“视觉识别 → 联网检索 → LLM 综合回答”的组合链路，
 > 并支持“描述刚才生成的图片”这类跨轮图片引用。
@@ -155,18 +162,19 @@ Agent 使用“关键词意图路由”机制自主决策：
 
 | 领域 | 技术方案 |
 |------|---------|
-| 框架 | React Native (Expo SDK 52) |
-| 导航 | Expo Router 4 |
+| 框架 | React Native (Expo SDK 54) |
+| 导航 | Expo Router 6 |
 | 状态管理 | Zustand |
 | 数据库 | expo-sqlite (SQLite) |
 | LLM | DeepSeek V3 / 通义千问 / Kimi / GLM / GPT (OpenAI 格式) |
-| Embedding | 阿里云 DashScope text-embedding-v3 |
+| Embedding | 阿里云 DashScope text-embedding-v3（文本）/ qwen3-vl-embedding（非文本） |
 | ASR | 阿里云 Paraformer v2 (FormData 上传) |
 | TTS | expo-speech (系统原生) |
 | 联网搜索 | DashScope Qwen enable_search |
-| AI 绘图 | 阿里云 DashScope wanx-v1 |
+| AI 绘图 | 阿里云 DashScope qwen-image-max / wanx-v1 |
 | 流式传输 | XMLHttpRequest SSE (React Native 兼容) |
 | Markdown | react-native-markdown-display |
+| 富文本图形渲染 | react-native-webview (KaTeX / Mermaid) |
 
 ---
 
@@ -244,6 +252,16 @@ npm run build:aab
 - [rag_architecture.md](架构文档/log10_rag_architecture.md)
 - [streaming_state.md](架构文档/log11_streaming_state.md)
 - [dataflow_errors.md](架构文档/log12_dataflow_errors.md)
+
+---
+
+## 关键约束速查
+
+- **路由策略**：当前以代码为准，`agent.ts` 为“LLM 路由优先 + 规则兜底”。
+- **流式契约**：`onStream(chunk, done)` 中 `done=true` 必须立即 flush 并清理 `isLoading`。
+- **键盘与安全区适配**：聊天页/侧栏均基于 `useSafeAreaInsets`，Android 真机优先保证“顶部不遮挡、输入栏不被键盘吞没”。
+- **多附件持久化**：消息优先走 `Message.attachments` / `messages.attachments_json`，并兼容历史单附件字段。
+- **RAG 模型策略**：纯文本默认 `text-embedding-v3`；图片/PDF 等非文本默认 `qwen3-vl-embedding`；图片入库走快速向量化，不依赖 `qwen-vl-max` OCR。
 ## 许可证
 
 MIT License

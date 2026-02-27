@@ -5,6 +5,8 @@
  */
 import * as Crypto from 'expo-crypto';
 import { getEmbedding, getBatchEmbeddings } from './embedding';
+import { getBatchEmbeddingsByItems } from './embedding';
+import type { EmbeddingInputItem } from './embedding';
 import {
   addRagChunk,
   addRagChunks,
@@ -101,12 +103,18 @@ export async function addMarkdownToRag(
   dashscopeApiKey: string,
   embeddingModel: string,
   sourceKind: 'text' | 'non_text' = 'text',
+  embeddingInputs?: EmbeddingInputItem[],
 ): Promise<number> {
   if (!dashscopeApiKey) throw new Error('请先配置阿里云 API Key');
 
-  const chunks = isMarkdownSource(fileName)
-    ? chunkMarkdown(content, 500, 50)
-    : chunkText(content, 550, 70);
+  const chunks = embeddingInputs?.length
+    ? embeddingInputs.map((_, idx) => {
+        const base = content.trim() || `【来源文件】${fileName}`;
+        return embeddingInputs.length > 1 ? `${base}\n\n【片段】${idx + 1}` : base;
+      })
+    : isMarkdownSource(fileName)
+      ? chunkMarkdown(content, 500, 50)
+      : chunkText(content, 550, 70);
   const ragChunks: RagChunk[] = [];
 
   for (const text of chunks) {
@@ -127,11 +135,13 @@ export async function addMarkdownToRag(
 
   // 计算 embedding
   try {
-    const embeddings = await getBatchEmbeddings(
-      chunks,
-      dashscopeApiKey,
-      embeddingModel
-    );
+    const embeddings = embeddingInputs?.length
+      ? await getBatchEmbeddingsByItems(embeddingInputs, dashscopeApiKey, embeddingModel)
+      : await getBatchEmbeddings(
+          chunks,
+          dashscopeApiKey,
+          embeddingModel
+        );
     for (let i = 0; i < ragChunks.length; i++) {
       if (embeddings[i]) {
         await updateChunkEmbedding(ragChunks[i].id, embeddings[i], embeddingModel);

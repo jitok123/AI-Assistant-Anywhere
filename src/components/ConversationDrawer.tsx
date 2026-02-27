@@ -1,5 +1,6 @@
 /**
- * 对话列表侧边栏组件（抽屉）
+ * 对话列表侧边栏组件（V2.0）
+ * 响应式宽度、编辑态批量操作与安全区适配。
  */
 import React, { useMemo, useState } from 'react';
 import {
@@ -11,8 +12,10 @@ import {
   StyleSheet,
   Alert,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../hooks/useTheme';
 import { useAppStore } from '../store';
 import { APP_AVATAR } from '../constants/branding';
@@ -24,6 +27,9 @@ interface Props {
 export function ConversationDrawer({ onClose }: Props) {
   const colors = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const drawerWidth = Math.min(Math.max(screenWidth * 0.84, 320), 420);
   const [editMode, setEditMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const {
@@ -126,12 +132,20 @@ export function ConversationDrawer({ onClose }: Props) {
   });
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.sidebarBg }]}>
+    <View style={[styles.container, { backgroundColor: colors.sidebarBg, width: drawerWidth }]}> 
       {/* 头部 */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            borderBottomColor: colors.border,
+            paddingTop: Math.max(insets.top + 10, 16),
+          },
+        ]}
+      >
         <View style={styles.headerLeft}>
           <Image source={APP_AVATAR} style={styles.headerAvatar} />
-          <Text style={[styles.title, { color: colors.text }]}>对话列表</Text>
+          <Text style={[styles.title, { color: colors.text }]}>会话</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={toggleEditMode} style={styles.headerActionBtn}>
@@ -139,7 +153,7 @@ export function ConversationDrawer({ onClose }: Props) {
               {editMode ? '完成' : '编辑'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={{ color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -233,7 +247,15 @@ export function ConversationDrawer({ onClose }: Props) {
       />
 
       {/* 底部导航 */}
-      <View style={[styles.footer, { borderTopColor: colors.border }]}>
+      <View
+        style={[
+          styles.footer,
+          {
+            borderTopColor: colors.border,
+            paddingBottom: Math.max(insets.bottom + 12, 24),
+          },
+        ]}
+      > 
         {editMode ? (
           <TouchableOpacity
             style={[
@@ -277,14 +299,15 @@ export function ConversationDrawer({ onClose }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: 320,
+    borderTopRightRadius: 18,
+    borderBottomRightRadius: 18,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 50,
     paddingBottom: 14,
     borderBottomWidth: 0.5,
   },
@@ -292,11 +315,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginLeft: 8,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 1,
   },
   headerAvatar: {
     width: 24,
@@ -310,9 +335,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
+    lineHeight: 24,
   },
   closeBtn: {
-    padding: 4,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+    marginRight: 2,
+    backgroundColor: 'rgba(120,145,180,0.12)',
   },
   newBtn: {
     marginHorizontal: 14,

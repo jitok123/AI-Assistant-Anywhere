@@ -1,12 +1,12 @@
 /**
- * 全局状态管理 (Zustand)
- * 
+ * 全局状态管理 (Zustand) · V2.0
+ *
  * 消息处理流程：
- *   用户输入 → 多模态处理 → RAG专员检索 → AI Agent → 输出
- *                                              ├─ 联网搜索
- *                                              ├─ 图片生成
- *                                              └─ 直接回复
- *   输出后 → 更新多层RAG（感性/理性/历史）
+ *   用户输入 → 多模态处理 → RAG 专员检索 → AI Agent/LLM → 流式输出
+ *                                                  ├─ 联网搜索
+ *                                                  ├─ 图片生成
+ *                                                  └─ 直接回复
+ *   输出后 → 异步更新多层 RAG（感性/理性/历史/通用）
  */
 import { create } from 'zustand';
 import * as Crypto from 'expo-crypto';
@@ -385,6 +385,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // ⏰ 安全超时：前台 120s 后强制清除 loading（防止永久卡住）
     //   若应用在后台，延后检查，避免后台阶段被误判中断。
     let safetyTimeout: any = null;
+    let streamFlushTimer: any = null;
     const scheduleSafetyCheck = (delayMs: number) => {
       safetyTimeout = setTimeout(() => {
         if (!get().isLoading) return;
@@ -420,6 +421,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // 系统提示（含多层 RAG 上下文）
       let systemPrompt = `${settings.systemPrompt}\n\n${buildTimeContextLine()}`;
+      
+      // 强制注入富文本格式要求，防止模型输出完整的 LaTeX 文档导致渲染失败
+      if (!systemPrompt.includes('$$')) {
+        systemPrompt += `\n\n【格式要求】\n1. 数学公式必须使用 Markdown 语法：行内公式用 $...$，独立公式块用 $$...$$。绝对不要输出完整的 LaTeX 文档代码（如 \\begin{document} 等）。\n2. 图表请使用 Markdown 的 mermaid 代码块。`;
+      }
       if (ragContext) {
         systemPrompt += `\n\n以下是从多层记忆系统中检索到的相关内容：\n${ragContext}`;
       }
@@ -500,14 +506,40 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // ── 步骤3：AI Agent 处理（含工具调用决策） ──
       let agentResult;
-      // 流式回调：更新消息内容，done=true 时立即清除 loading 状态
-      const streamCallback = (chunk: string, done: boolean) => {
-        set({ streamingContent: chunk });
+      let latestStreamChunk = '';
+      let lastStreamFlushAt = 0;
+
+      const flushStreamToUi = (force = false) => {
+        if (!latestStreamChunk && !force) return;
+        if (streamFlushTimer) {
+          clearTimeout(streamFlushTimer);
+          streamFlushTimer = null;
+        }
+        lastStreamFlushAt = Date.now();
+        const chunkToRender = latestStreamChunk;
+        set({ streamingContent: chunkToRender });
         set((s) => ({
           messages: s.messages.map((m) =>
-            m.id === aiMsg.id ? { ...m, content: chunk } : m
+            m.id === aiMsg.id ? { ...m, content: chunkToRender } : m
           ),
         }));
+      };
+
+      // 流式回调：更新消息内容，done=true 时立即清除 loading 状态
+      const streamCallback = (chunk: string, done: boolean) => {
+        latestStreamChunk = chunk;
+
+        const now = Date.now();
+        const shouldFlushNow = done || now - lastStreamFlushAt >= 66;
+
+        if (shouldFlushNow) {
+          flushStreamToUi(true);
+        } else if (!streamFlushTimer) {
+          streamFlushTimer = setTimeout(() => {
+            flushStreamToUi(true);
+          }, 66);
+        }
+
         // ⚡ 关键修复：流完成信号到达时立即清除 loading
         //    防止 XHR promise 未正确 resolve 导致 isLoading 卡住
         if (done) {
@@ -754,6 +786,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } finally {
       // 🔒 终极保险：无论如何都清除 loading 状态
       clearTimeout(safetyTimeout);
+      if (streamFlushTimer) clearTimeout(streamFlushTimer);
       console.log('[Store] finally 块执行，清除 loading');
       set({ _abortController: null, isLoading: false, streamingContent: '' } as any);
     }

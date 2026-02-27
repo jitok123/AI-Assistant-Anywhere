@@ -177,7 +177,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   userBubbleStyle: 'lavender',
   voiceEnabled: true,
   autoSaveToRag: true,
-  systemPrompt: '你是一个智能随身助手，请用中文回答用户的问题。你具有联网搜索能力（可查询实时新闻和最新信息）和图片生成能力（可根据描述创建图片）。你可以参考以下相关上下文来回答：',
+  systemPrompt: '你是一个智能随身助手，请用中文回答用户的问题。你具有联网搜索能力（可查询实时新闻和最新信息）和图片生成能力（可根据描述创建图片）。\n\n【重要格式要求】\n1. 如果需要输出数学公式，请务必使用 Markdown 的数学公式语法：行内公式使用 $...$，独立公式块使用 $$...$$。绝对不要输出完整的 LaTeX 文档代码（如 \\begin{document} 等）。\n2. 如果需要输出图表，请使用 Markdown 的 mermaid 代码块。\n\n你可以参考以下相关上下文来回答：',
 };
 
 /** 聊天模式 */

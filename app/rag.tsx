@@ -66,6 +66,7 @@ export default function RagScreen() {
               ? resolveRagEmbeddingModel(settings, 'text')
               : resolveRagEmbeddingModel(settings, 'non_text'),
             extracted.sourceKind === 'text' ? 'text' : 'non_text',
+            extracted.embeddingInputs,
           );
           totalChunks += chunks;
           successCount += 1;

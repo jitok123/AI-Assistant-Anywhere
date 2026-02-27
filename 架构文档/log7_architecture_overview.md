@@ -1,6 +1,6 @@
 # 📐 项目总体架构图
 
-> 生成时间：2025 年 · 基于当前代码库分析
+> 版本：V2.0（2026-02） · 基于当前代码库分析
 
 ---
 
@@ -38,7 +38,7 @@ graph TB
     subgraph RAG["📚 RAG 层 (多层记忆)"]
         ragSpec["ragSpecialist.ts<br/>多层 RAG 专员<br/>感性/理性/历史/通用"]
         ragBase["rag.ts<br/>基础 RAG<br/>添加 & 搜索"]
-        embedding["embedding.ts<br/>DashScope<br/>text-embedding-v3"]
+        embedding["embedding.ts<br/>DashScope<br/>text-embedding-v3 / qwen3-vl-embedding"]
         vectorSearch["vectorSearch.ts<br/>余弦相似度 TopK"]
     end
 
@@ -170,7 +170,7 @@ graph LR
 | LLM | DeepSeek API (OpenAI 兼容) | 主对话模型 |
 | 搜索 | Aliyun DashScope (Qwen + enable_search) | 联网搜索增强 |
 | 图片 | Aliyun DashScope (qwen-image-max) | AI 文生图 |
-| 嵌入 | Aliyun DashScope (text-embedding-v3) | 文本向量化 |
+| 嵌入 | Aliyun DashScope (text-embedding-v3 / qwen3-vl-embedding) | 文本与非文本向量化 |
 | 视觉 | Aliyun DashScope (qwen-vl-max) | 图片理解 |
 | 流式 | XHR + SSE 手动解析 | 流式对话 (RN 不支持 ReadableStream) |
 | Markdown | react-native-markdown-display | AI 回复渲染 |
