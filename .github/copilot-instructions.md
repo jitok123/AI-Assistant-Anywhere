@@ -9,7 +9,7 @@
 - `src/services/agent.ts` uses **keyword intent routing**, not OpenAI Function Calling, for cross-model compatibility.
 - Current routes: image generation (`image_gen`) → time query (`time_query`) → web search + synthesis (`web_search`) → normal chat fallback.
 - Do not put markdown image syntax in assistant content; pass generated image via `Message.generatedImageUrl` and render in `src/components/MessageBubble.tsx`.
-- Multimodal image understanding is orchestrated in `src/store/index.ts`: vision analysis (`qwen-vl-max`) can chain into web search in the same turn when query intent requires freshness.
+- Multimodal image understanding is orchestrated in `src/store/index.ts`: vision analysis uses the user-selected DashScope vision model (`settings.visionModel`) and can chain into web search in the same turn when query intent requires freshness.
 
 ## Streaming + loading behavior (critical)
 - Streaming is implemented with XHR SSE parser in `src/services/deepseek.ts` (`streamWithXHR`) because RN fetch streaming is unreliable.

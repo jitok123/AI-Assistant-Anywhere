@@ -115,6 +115,26 @@ export const CHAT_MODEL_PRESETS: ChatModelPreset[] = [
     temperature: 0.7,
     maxTokens: 4096,
   },
+  {
+    name: '通义千问 Qwen3-VL Plus',
+    model: 'qwen3-vl-plus',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    description: 'Qwen3 视觉理解模型（增强视觉推理能力）',
+    supportsStream: true,
+    supportsVision: true,
+    temperature: 0.7,
+    maxTokens: 8192,
+  },
+  {
+    name: '通义千问 Qwen3-VL Plus (2025-12-19)',
+    model: 'qwen3-vl-plus-2025-12-19',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    description: 'Qwen3 视觉理解快照版本（2025-12-19）',
+    supportsStream: true,
+    supportsVision: true,
+    temperature: 0.7,
+    maxTokens: 8192,
+  },
 
   // ─── Kimi（月之暗面）───
   {

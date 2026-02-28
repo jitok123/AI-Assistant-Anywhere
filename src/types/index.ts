@@ -126,6 +126,8 @@ export interface AppSettings {
   maxTokens: number;
   // ── 📊 Embedding 模型配置 ──
   dashscopeApiKey: string;
+  /** 视觉识别模型（图片理解） */
+  visionModel: string;
   /** 兼容旧逻辑：默认 embedding 模型（历史字段） */
   embeddingModel: string;
   /** RAG 文本输入使用的 embedding 模型 */
@@ -161,6 +163,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   temperature: 0.7,
   maxTokens: 4096,
   dashscopeApiKey: '',
+  visionModel: 'qwen-vl-max',
   embeddingModel: 'text-embedding-v3',
   ragTextEmbeddingModel: 'text-embedding-v3',
   ragNonTextEmbeddingModel: 'qwen3-vl-embedding',

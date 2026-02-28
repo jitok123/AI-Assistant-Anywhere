@@ -121,7 +121,7 @@ graph TD
 ```mermaid
 graph TD
     IMG["用户发送图片"] --> B64["imageToBase64(uri)"]
-    B64 --> VIS["qwen-vl-max 视觉识别"]
+    B64 --> VIS["视觉模型识别\nsettings.visionModel"]
     VIS --> NEED{"问题是否需要联网?"}
     NEED -->|否| DIRECT["直接输出视觉分析"]
     NEED -->|是| SEARCH["qwen-plus enable_search<br/>检索实时事实"]
@@ -168,7 +168,7 @@ graph TD
 
 - 旧行为：图片消息固定“视觉模型直答”，会绕过 Agent 联网分支。
 - 新行为：当用户在图片轮显式提出“检索/搜索/最新进展”等实时诉求时，执行三段链路：
-    1. `qwen-vl-max` 先做图片识别（抽取可见事实）
+    1. 视觉模型先做图片识别（settings.visionModel，可配置）
     2. `qwen-plus + enable_search` 联网补充外部事实
     3. DeepSeek 基于“图像事实 + 联网事实”进行最终流式综合回答
 

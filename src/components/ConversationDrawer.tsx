@@ -314,8 +314,8 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginLeft: 8,
+    gap: 6,
+    marginLeft: 12,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -329,8 +329,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   headerActionBtn: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 10,
     paddingVertical: 4,
+    marginRight: 6,
   },
   title: {
     fontSize: 18,

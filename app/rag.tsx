@@ -144,11 +144,23 @@ export default function RagScreen() {
 
   const pendingCount = ragStats.totalChunks - ragStats.embeddedChunks;
 
+  const goBackSafe = () => {
+    try {
+      if ((router as any).canGoBack?.()) {
+        router.back();
+      } else {
+        router.replace('/');
+      }
+    } catch {
+      router.replace('/');
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* 头部 */}
       <View style={[styles.header, { backgroundColor: colors.headerBg, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={goBackSafe} style={styles.backBtn}>
           <Text style={{ color: colors.primary, fontSize: 16 }} numberOfLines={1}>← 返回</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>知识库</Text>

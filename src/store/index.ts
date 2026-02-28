@@ -116,6 +116,7 @@ interface AppState {
   messages: Message[];
   isLoading: boolean;
   streamingContent: string;
+  streamingMessageId: string | null;
   sendMessage: (
     content: string,
     type?: 'text' | 'voice' | 'image' | 'file',
@@ -154,6 +155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   messages: [],
   isLoading: false,
   streamingContent: '',
+  streamingMessageId: null,
   chatMode: 'text',
   ragStats: { totalChunks: 0, embeddedChunks: 0, chatChunks: 0, uploadChunks: 0 },
   _abortController: null,
@@ -221,6 +223,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       settings.ragNonTextEmbeddingModel = 'qwen3-vl-embedding';
       await setSetting('ragNonTextEmbeddingModel', settings.ragNonTextEmbeddingModel);
     }
+    if (!settings.visionModel) {
+      settings.visionModel = 'qwen-vl-max';
+      await setSetting('visionModel', settings.visionModel);
+    }
     set({ settings });
   },
 
@@ -249,13 +255,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentConversationId: id,
       messages: [],
       streamingContent: '',
+      streamingMessageId: null,
     }));
     return id;
   },
 
   /** 选择对话 */
   selectConversation: async (id: string) => {
-    set({ currentConversationId: id, streamingContent: '' });
+    set({ currentConversationId: id, streamingContent: '', streamingMessageId: null });
     const messages = await getMessages(id);
     set({ messages });
   },
@@ -269,6 +276,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (state.currentConversationId === id) {
       updates.currentConversationId = null;
       updates.messages = [];
+      updates.streamingMessageId = null;
     }
     set(updates as any);
   },
@@ -285,6 +293,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (state.currentConversationId && idSet.has(state.currentConversationId)) {
       updates.currentConversationId = null;
       updates.messages = [];
+      updates.streamingMessageId = null;
     }
 
     set(updates as any);
@@ -377,6 +386,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       messages: [...s.messages, userMsg, aiMsg],
       isLoading: true,
       streamingContent: '',
+      streamingMessageId: aiMsg.id,
     }));
 
     const abortController = new AbortController();
@@ -395,7 +405,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         console.warn('[Store] 安全超时触发，强制清除 loading');
-        set({ isLoading: false, streamingContent: '' });
+        set({ isLoading: false, streamingContent: '', streamingMessageId: null });
       }, delayMs);
     };
     scheduleSafetyCheck(120000);
@@ -544,7 +554,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         //    防止 XHR promise 未正确 resolve 导致 isLoading 卡住
         if (done) {
           console.log('[Store] 流式完成信号到达，清除 loading');
-          set({ isLoading: false, streamingContent: '' });
+          set({ isLoading: false, streamingContent: '', streamingMessageId: null });
         }
       };
 
@@ -580,12 +590,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
         ];
 
+        const visionModel = settings.visionModel || 'qwen-vl-max';
         const visionContent = await withTimeout(
           chatCompletion(
             visionOnlyMessages,
             settings.dashscopeApiKey,
             getDashScopeCompatibleBaseUrl(),
-            'qwen-vl-max',
+            visionModel,
             undefined,
             0.3,
             settings.maxTokens,
@@ -719,10 +730,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
         isLoading: false,
         streamingContent: '',
+        streamingMessageId: null,
       }));
 
       // 清除流式状态（确保 UI 更新）
-      set({ isLoading: false, streamingContent: '' });
+      set({ isLoading: false, streamingContent: '', streamingMessageId: null });
 
       // 自动生成标题（完全后台，不影响UI）
       const currentMessages = get().messages;
@@ -770,7 +782,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         extra: { type, hasImage: !!imageUri, hasFile: !!fileAttachment },
       });
       if (error.name === 'AbortError') {
-        set({ isLoading: false, streamingContent: '' });
+        set({ isLoading: false, streamingContent: '', streamingMessageId: null });
         return;
       }
 
@@ -782,13 +794,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
         isLoading: false,
         streamingContent: '',
+        streamingMessageId: null,
       }));
     } finally {
       // 🔒 终极保险：无论如何都清除 loading 状态
       clearTimeout(safetyTimeout);
       if (streamFlushTimer) clearTimeout(streamFlushTimer);
       console.log('[Store] finally 块执行，清除 loading');
-      set({ _abortController: null, isLoading: false, streamingContent: '' } as any);
+      set({ _abortController: null, isLoading: false, streamingContent: '', streamingMessageId: null } as any);
     }
   },
 
@@ -797,7 +810,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const ctrl = get()._abortController;
     if (ctrl) {
       ctrl.abort();
-      set({ isLoading: false, _abortController: null } as any);
+      set({ isLoading: false, streamingContent: '', streamingMessageId: null, _abortController: null } as any);
     }
   },
 

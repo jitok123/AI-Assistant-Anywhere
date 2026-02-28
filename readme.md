@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/icon.png" width="120" alt="Logo" />
   <h1>随身AI助手 (AI-Assistant-Anywhere)</h1>
-  <p>一个全功能 AI 助手应用 — 多层记忆 · 联网搜索 · AI绘图</p>
+  <p>一个全功能 AI 助手应用   多层记忆 · 联网搜索 · AI绘图</p>
 
   <p>
     <img src="https://img.shields.io/badge/React%20Native-0.81.5-blue.svg" alt="React Native" />
@@ -14,20 +14,65 @@
 
 ---
 
+## 🚀 项目介绍 (Overview)
+
+**随身AI助手 (AI-Assistant-Anywhere)** 是一个基于 **React Native + Expo Router** 的本地优先（Local-first）AI 助手应用。
+它将「流式对话」「多模态理解」「工具调用」「多层 RAG 记忆」整合到同一条消息管线里：一边输出一边渲染，同时保证移动端体验稳定、顺滑。
+
+你可以把它当作一个可二次开发的“移动端 AI 操作系统雏形”：
+
+- **多模型/多供应商兼容**：支持所有兼容 OpenAI 接口格式的对话模型；视觉模型可在设置里切换。
+- **Agent 工具编排**：自动判定是否需要联网搜索 / 生图 / 时间工具等，并将结果回注到对话上下文。
+- **多层 RAG 记忆**：感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库（上传文档）。
+- **移动端优先的富文本渲染**：Markdown、LaTeX、Mermaid 支持实时渲染、点击全屏预览、复制源码。
+
+代码结构（建议从这里开始读）：
+
+- `app/`：Expo Router 页面入口
+- `src/store/index.ts`：消息管线与运行时编排（端到端 `sendMessage`）
+- `src/services/`：Agent、RAG、搜索、绘图、语音等服务模块
+
+## 📱 核心功能演示 (Live Demo)
+
+<div align="center">
+  <img src="assets/gif/demo.gif" alt="App Action Demo" width="300"/>
+  <p><em>应用实际运行演示（对话、多模态、工具调用全流程）</em></p>
+</div>
+
+---
+
+## 📸 应用截图展示 (App Screenshots)
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><img src="assets/jpg/vision-image-understanding.jpg" width="250" alt="图片理解" /><br/><b>图片理解：拍照/截图提问</b></td>
+      <td align="center"><img src="assets/jpg/latex-math-rendering.jpg" width="250" alt="LaTeX 渲染" /><br/><b>Markdown + LaTeX 实时渲染</b></td>
+      <td align="center"><img src="assets/jpg/mermaid-rendering-in-chat.jpg" width="250" alt="Mermaid 对话内渲染" /><br/><b>Mermaid：对话内渲染</b></td>
+    </tr>
+    <tr>
+      <td align="center"><img src="assets/jpg/mermaid-fullscreen-preview.jpg" width="250" alt="Mermaid 全屏预览" /><br/><b>Mermaid：全屏预览/缩放</b></td>
+      <td align="center"><img src="assets/jpg/knowledge-base-overview.jpg" width="250" alt="知识库" /><br/><b>知识库：上传/嵌入/统计</b></td>
+      <td align="center"><img src="assets/jpg/vision-image-understanding-result.jpg" width="250" alt="图片识别结果" /><br/><b>图片理解：结构化识别结果</b></td>
+    </tr>
+  </table>
+</div>
+
+---
+
 ## ✨ 功能概览 (Features)
 
 - **💬 AI 对话**：流式响应，支持 DeepSeek / 通义千问 / Kimi / GLM / GPT 等所有兼容 OpenAI 格式的模型。
 - **🧠 多层 RAG 记忆**：感性层（情感分析）+ 理性层（用户画像）+ 历史层（对话记忆）+ 通用知识库。
 - **🌐 联网搜索**：Agent 自主判断是否需要搜索，使用 DashScope Qwen `enable_search` 获取实时信息。
 - **🎨 AI 绘图**：Agent 自主判断是否需要画图，阿里云 DashScope 文生图。生图前先由 LLM 自动优化提示词。
-- **🎙️ 语音输入**：集成阿里云 Paraformer ASR 语音识别。
-- **👁️ 图片理解**：支持多模态模型（通义千问 VL 等），发送图片给 AI 分析。
+- **👁️ 图片理解**：支持多模态模型（通义千问 VL 等），可在设置中选择视觉识别模型。
 - **📎 文件附件对话**：聊天输入支持多图片 + 多文件混合发送（文本文件自动提取节选用于上下文）。
 - **📐 数学公式渲染**：支持 LaTeX 块级公式（`$$...$$` / `\[...\]`）正确排版显示，全屏预览支持复制源码。
 - **📊 Mermaid 图表渲染**：支持 Mermaid 代码块直接渲染，点击可全屏预览并双指缩放，支持复制源码。
 - **💾 生图下载**：生成后的图片支持在消息气泡中一键保存到本地。
 - **🔄 图片+联网同回合**：图片理解与联网搜索可在同一轮自动串联（先看图，再检索，再综合回答）。
-- **⏰ 时间工具**：内置时间函数（当前时间/日期/星期/时间戳），并为模型注入“当前时间锚点”。
+- **⏰ 时间工具**：内置时间函数（当前时间/日期/星期/时间戳），并核心宗旨 ‘一切皆历史’为模型注入“当前时间锚点”。
 - **📚 知识库管理**：上传文本 / PDF / 图片构建本地知识库，支持按类型配置向量模型（文本/非文本双路）。
 - **📦 数据导入导出**：完整的对话、知识库备份与恢复。
 - **🗑️ 会话批量删除**：侧栏支持编辑模式、多选/全选后批量删除。
@@ -78,7 +123,7 @@ npx expo start
 在应用的 **设置** 页面中配置以下 API Key 即可开始使用：
 
 1. **对话模型 API Key**（必需）：支持 DeepSeek / 通义千问 / Kimi / GLM / OpenAI。
-2. **阿里云 DashScope API Key**：用于 Embedding(RAG)、语音识别、图片生成、联网搜索。
+2. **阿里云 DashScope API Key**：用于 Embedding(RAG)、语音识别、图片生成、联网搜索、图片理解。
 3. **百度千帆 API Key**：预留字段（当前默认不使用）。
 
 > **💡 提示**：当前联网搜索默认走 DashScope（与 Embedding/生图复用同一 Key）。
@@ -155,11 +200,11 @@ npx expo start
 本项目强烈推荐使用 **Expo EAS (Expo Application Services)** 进行云端构建，这也是作者验证通过的标准流程：
 
 1. 将代码推送到你的 GitHub 仓库。
-2. 登录 [Expo 控制台](https://expo.dev/)，创建项目并关联该 GitHub 仓库。
+2. 登录 [Expo 控制台](https://expo.dev/)，创建项目并关联该 GitHub 或 FORK 仓库。
 3. 在 Expo 网页端选择对应分支（如 `main`），使用 `preview` profile 触发 Android 构建。
 4. 构建完成后，直接扫码或下载 APK 安装到手机即可。
 
-*附：命令行构建参考（需自行配置对应环境）*
+*附：其他构建命令行构建参考（需自行配置对应环境）*
 
 ```bash
 # EAS 云端构建 (命令行触发)
@@ -185,3 +230,4 @@ npm run build:apk:local
 ### 免责声明
 
 本软件按“现状”提供，不附带任何明示或暗示的保证。用户需自行承担使用本软件的全部风险。开发者不对任何因使用本软件造成的直接或间接损失承担责任。本项目使用的第三方 API 服务由相应服务商提供，开发者不对其服务可用性、准确性及合规性负责。本软件不得用于任何违反法律法规的目的。
+

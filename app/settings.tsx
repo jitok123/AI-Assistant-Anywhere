@@ -2,7 +2,7 @@
  * 设置页面（V2.0）
  * 聚焦：模型配置、RAG 参数、外观偏好与数据管理。
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import {
   type ChatModelPreset,
   type EmbeddingModelPreset,
 } from '../src/config/models';
+import { getDashScopeCompatibleBaseUrl } from '../src/config/api';
 import { APP_AVATAR } from '../src/constants/branding';
 
 export default function SettingsScreen() {
@@ -40,7 +41,19 @@ export default function SettingsScreen() {
   const [showDashscopeKey, setShowDashscopeKey] = useState(false);
   const [chatModelPickerVisible, setChatModelPickerVisible] = useState(false);
   const [embeddingModelPickerVisible, setEmbeddingModelPickerVisible] = useState(false);
+  const [visionModelPickerVisible, setVisionModelPickerVisible] = useState(false);
   const [embeddingTarget, setEmbeddingTarget] = useState<'single' | 'text' | 'non_text'>('single');
+
+  // 本地输入状态：避免每次按键触发 Zustand 更新打断 Android 输入法组合
+  const [localDisplayName, setLocalDisplayName] = useState(settings.userDisplayName);
+  const [localAvatarEmoji, setLocalAvatarEmoji] = useState(settings.userAvatarEmoji || '🙂');
+  useEffect(() => { setLocalDisplayName(settings.userDisplayName); }, [settings.userDisplayName]);
+  useEffect(() => { setLocalAvatarEmoji(settings.userAvatarEmoji || '🙂'); }, [settings.userAvatarEmoji]);
+
+  const dashscopeVisionPresets = CHAT_MODEL_PRESETS.filter(
+    (preset) => preset.supportsVision
+      && preset.baseUrl === getDashScopeCompatibleBaseUrl()
+  );
 
   // 找到当前选中的预设
   const currentChatPreset = CHAT_MODEL_PRESETS.find(
@@ -128,7 +141,7 @@ export default function SettingsScreen() {
   /** 选择 Embedding 模型预设 */
   const selectEmbeddingModel = (preset: EmbeddingModelPreset) => {
     if (embeddingTarget === 'text') {
-      updateSettings({ ragTextEmbeddingModel: preset.model });
+      updateSettings({ ragTextEmbeddingModel: preset.model, embeddingModel: preset.model });
     } else if (embeddingTarget === 'non_text') {
       updateSettings({ ragNonTextEmbeddingModel: preset.model });
     } else {
@@ -138,6 +151,12 @@ export default function SettingsScreen() {
       });
     }
     setEmbeddingModelPickerVisible(false);
+  };
+
+  /** 选择视觉识别模型预设 */
+  const selectVisionModel = (preset: ChatModelPreset) => {
+    updateSettings({ visionModel: preset.model });
+    setVisionModelPickerVisible(false);
   };
 
   const Section = ({
@@ -193,6 +212,18 @@ export default function SettingsScreen() {
     </View>
   );
 
+  const goBackSafe = () => {
+    try {
+      if ((router as any).canGoBack?.()) {
+        router.back();
+      } else {
+        router.replace('/');
+      }
+    } catch {
+      router.replace('/');
+    }
+  };
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -204,7 +235,7 @@ export default function SettingsScreen() {
           { backgroundColor: colors.headerBg, borderBottomColor: colors.border },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={goBackSafe} style={styles.backBtn}>
           <Text style={{ color: colors.primary, fontSize: 16 }} numberOfLines={1}>← 返回</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>设置</Text>
@@ -336,7 +367,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* ==================== 📊 Embedding 模型 ==================== */}
-        <Section title="Embedding 模型（RAG 向量化 & 语音识别）" icon="📊">
+        <Section title="DashScope 模型（RAG 向量化 & 图片识别）" icon="📊">
           <Row label="DashScope API Key" hint="阿里云密钥，RAG + 语音共用">
             <View style={styles.keyRow}>
               <TextInput
@@ -359,19 +390,16 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </Row>
-          <Row label="统一 Embedding 模型（兼容）" hint="旧字段，建议使用下方按类型配置">
+          <Row label="视觉识别模型" hint="图片理解使用的 DashScope 模型">
             <TouchableOpacity
               style={[
                 styles.embeddingSelector,
                 { borderColor: colors.border, backgroundColor: colors.primaryLight },
               ]}
-              onPress={() => {
-                setEmbeddingTarget('single');
-                setEmbeddingModelPickerVisible(true);
-              }}
+              onPress={() => setVisionModelPickerVisible(true)}
             >
               <Text style={[{ color: colors.text, fontSize: 14 }]}>
-                {settings.embeddingModel}
+                {settings.visionModel || 'qwen-vl-max'}
               </Text>
               <Text style={{ color: colors.textTertiary }}> ▼</Text>
             </TouchableOpacity>
@@ -517,8 +545,13 @@ export default function SettingsScreen() {
                 styles.input,
                 { color: colors.text, borderColor: colors.border },
               ]}
-              value={settings.userDisplayName}
-              onChangeText={(v) => updateSettings({ userDisplayName: v.trim() || '我' })}
+              value={localDisplayName}
+              onChangeText={setLocalDisplayName}
+              onBlur={() => {
+                const final = localDisplayName.trim() || '我';
+                setLocalDisplayName(final);
+                updateSettings({ userDisplayName: final });
+              }}
               placeholder="我"
               placeholderTextColor={colors.textTertiary}
               maxLength={12}
@@ -531,11 +564,12 @@ export default function SettingsScreen() {
                 styles.smallInput,
                 { color: colors.text, borderColor: colors.border },
               ]}
-              value={settings.userAvatarEmoji || ''}
-              onChangeText={(v) => updateSettings({ userAvatarEmoji: v })}
+              value={localAvatarEmoji}
+              onChangeText={setLocalAvatarEmoji}
               onBlur={() => {
-                const normalized = Array.from((settings.userAvatarEmoji || '').trim()).slice(0, 2).join('');
-                updateSettings({ userAvatarEmoji: normalized || '🙂' });
+                const normalized = Array.from((localAvatarEmoji || '').trim()).slice(0, 2).join('') || '🙂';
+                setLocalAvatarEmoji(normalized);
+                updateSettings({ userAvatarEmoji: normalized });
               }}
               placeholder="🙂"
               placeholderTextColor={colors.textTertiary}
@@ -765,6 +799,87 @@ export default function SettingsScreen() {
               }}
               contentContainerStyle={{ paddingBottom: 20 }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== 视觉识别模型选择弹窗 ==================== */}
+      <Modal
+        visible={visionModelPickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setVisionModelPickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              styles.smallModal,
+              { backgroundColor: colors.surface },
+            ]}
+          >
+            <View
+              style={[
+                styles.modalHeader,
+                { borderBottomColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                🖼️ 选择视觉识别模型
+              </Text>
+              <TouchableOpacity
+                onPress={() => setVisionModelPickerVisible(false)}
+              >
+                <Text style={{ color: colors.textSecondary, fontSize: 20 }}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text
+              style={[styles.modalSubtitle, { color: colors.textTertiary }]}
+            >
+              仅显示 DashScope 兼容的视觉模型（图片理解）。
+            </Text>
+            {dashscopeVisionPresets.map((preset) => {
+              const isActive = preset.model === (settings.visionModel || 'qwen-vl-max');
+              return (
+                <TouchableOpacity
+                  key={preset.model}
+                  style={[
+                    styles.modelOption,
+                    {
+                      borderColor: isActive
+                        ? colors.primary
+                        : colors.border,
+                      backgroundColor: isActive
+                        ? colors.primaryLight
+                        : 'transparent',
+                    },
+                  ]}
+                  onPress={() => selectVisionModel(preset)}
+                >
+                  <Text
+                    style={[
+                      styles.modelOptionName,
+                      {
+                        color: isActive ? colors.primary : colors.text,
+                      },
+                    ]}
+                  >
+                    {isActive ? '✅ ' : ''}
+                    {preset.name}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.modelOptionDesc,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {preset.description}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </Modal>

@@ -43,6 +43,18 @@ export default function CallScreen() {
   const router = useRouter();
   const { settings, sendMessage, messages } = useAppStore();
 
+  const goBackSafe = useCallback(() => {
+    try {
+      if ((router as any).canGoBack?.()) {
+        router.back();
+      } else {
+        router.replace('/');
+      }
+    } catch {
+      router.replace('/');
+    }
+  }, [router]);
+
   const [callState, setCallState] = useState<CallState>('idle');
   const [callDuration, setCallDuration] = useState(0);
   const [isInCall, setIsInCall] = useState(false);
@@ -144,7 +156,7 @@ export default function CallScreen() {
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      router.back();
+      goBackSafe();
     });
   };
 
@@ -251,7 +263,7 @@ export default function CallScreen() {
 
       {/* 返回按钮 */}
       <TouchableOpacity
-        onPress={isInCall ? endCall : () => router.back()}
+        onPress={isInCall ? endCall : goBackSafe}
         style={styles.backBtn}
         activeOpacity={0.7}
       >
